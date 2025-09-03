@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "leanengine": "latest"
+    "leancloud-storage": "latest"
   },
   "engines": {
     "node": ">=14.0.0"
@@ -15,6 +16,7 @@
   "author": "牛马Work Team",
   "license": "MIT"
 }
+
 
 
 
