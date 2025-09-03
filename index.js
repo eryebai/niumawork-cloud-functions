@@ -3,7 +3,7 @@
  * 提供软件搜索、验证码生成、广告完成记录等功能
  */
 
-const AV = require('leanengine');
+const AV = require('leancloud-storage');
 
 // 初始化软件数据
 const INITIAL_SOFTWARE_DATA = [
@@ -558,3 +558,4 @@ AV.Cloud.define('getSoftwareList', async (request) => {
 });
 
 module.exports = AV.Cloud;
+
