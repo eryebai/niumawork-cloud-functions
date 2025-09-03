@@ -3,7 +3,14 @@
  * 提供软件搜索、验证码生成、广告完成记录等功能
  */
 
-const AV = require('leancloud-storage');
+const AV = require('leanengine');
+
+// 初始化LeanEngine
+AV.init({
+  appId: process.env.LEANCLOUD_APP_ID,
+  appKey: process.env.LEANCLOUD_APP_KEY,
+  masterKey: process.env.LEANCLOUD_APP_MASTER_KEY
+});
 
 // 初始化软件数据
 const INITIAL_SOFTWARE_DATA = [
@@ -555,18 +562,6 @@ AV.Cloud.define('getSoftwareList', async (request) => {
       error: error.message
     };
   }
-module.exports = AV.Cloud;
-// 启动HTTP服务器
-const express = require('express');
-const { LeanEngine } = require('leanengine');
-
-const app = express();
-app.use(LeanEngine);
-
-const PORT = process.env.LEANCLOUD_APP_PORT || process.env.PORT || 3000;
-app.listen(PORT, function () {
-  console.log('LeanEngine app is running on port:', PORT);
 });
 
-
-
+module.exports = AV.Cloud;
