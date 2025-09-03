@@ -7,7 +7,7 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "leanengine": "^4.0.0"
+    "leanengine": "latest"
   },
   "engines": {
     "node": ">=14.0.0"
@@ -15,5 +15,6 @@
   "author": "牛马Work Team",
   "license": "MIT"
 }
+
 
 
