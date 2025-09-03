@@ -1,0 +1,17 @@
+{
+  "name": "niumawork-cloud-functions",
+  "version": "1.0.0",
+  "description": "牛马Work LeanCloud云函数",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "leanengine": "^4.1.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "author": "牛马Work Team",
+  "license": "MIT"
+}
