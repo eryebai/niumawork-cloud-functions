@@ -565,3 +565,15 @@ AV.Cloud.define('getSoftwareList', async (request) => {
 });
 
 module.exports = AV.Cloud;
+
+// 启动HTTP服务器
+const express = require('express');
+const app = express();
+
+// 使用LeanEngine中间件
+app.use(require('leanengine').express());
+
+const PORT = process.env.LEANCLOUD_APP_PORT || process.env.PORT || 3000;
+app.listen(PORT, function () {
+  console.log('LeanEngine app is running on port:', PORT);
+});
