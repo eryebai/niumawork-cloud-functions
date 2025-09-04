@@ -5,12 +5,7 @@
 
 const AV = require('leanengine');
 
-// 初始化LeanEngine
-AV.init({
-  appId: process.env.LEANCLOUD_APP_ID,
-  appKey: process.env.LEANCLOUD_APP_KEY,
-  masterKey: process.env.LEANCLOUD_APP_MASTER_KEY
-});
+// LeanEngine 会自动初始化，无需手动调用 AV.init()
 
 // 初始化软件数据
 const INITIAL_SOFTWARE_DATA = [
@@ -140,23 +135,28 @@ AV.Cloud.define('initDatabase', async (request) => {
     }
     
     if (deviceCount === 0) {
-      // 创建一个临时设备记录来触发表创建
-      const tempDevice = new UserDevice();
-      tempDevice.set('machineId', 'temp_init_device');
-      tempDevice.set('hardwareInfo', {
-        cpu: 'init',
-        disk: 'init', 
-        mac: 'init',
-        motherboard: 'init',
-        os: 'init'
-      });
-      tempDevice.set('status', 'temp');
-      tempDevice.set('registeredAt', new Date());
-      
-      await tempDevice.save();
-      await tempDevice.destroy(); // 立即删除临时数据
-      
-      results.UserDevice = '表已创建，等待真实设备注册';
+      try {
+        // 创建一个临时设备记录来触发表创建
+        const tempDevice = new UserDevice();
+        tempDevice.set('machineId', 'temp_init_device');
+        tempDevice.set('hardwareInfo', {
+          cpu: 'init',
+          disk: 'init', 
+          mac: 'init',
+          motherboard: 'init',
+          os: 'init'
+        });
+        tempDevice.set('status', 'temp');
+        tempDevice.set('registeredAt', new Date());
+        
+        await tempDevice.save();
+        await tempDevice.destroy(); // 立即删除临时数据
+        
+        results.UserDevice = '表已创建，等待真实设备注册';
+      } catch (error) {
+        console.error('创建UserDevice表失败:', error);
+        results.UserDevice = '表创建失败: ' + error.message;
+      }
     } else {
       results.UserDevice = `表已存在，共 ${deviceCount} 条设备记录`;
     }
@@ -172,19 +172,24 @@ AV.Cloud.define('initDatabase', async (request) => {
     }
     
     if (codeCount === 0) {
-      // 创建一个临时验证码记录来触发表创建
-      const tempCode = new DailyAuthCode();
-      tempCode.set('userId', 'temp_init_user');
-      tempCode.set('machineId', 'temp_init_machine');
-      tempCode.set('code', 'TEMP00');
-      tempCode.set('generatedAt', new Date());
-      tempCode.set('expiresAt', new Date());
-      tempCode.set('status', 'temp');
-      
-      await tempCode.save();
-      await tempCode.destroy(); // 立即删除临时数据
-      
-      results.DailyAuthCode = '表已创建，等待验证码生成';
+      try {
+        // 创建一个临时验证码记录来触发表创建
+        const tempCode = new DailyAuthCode();
+        tempCode.set('userId', 'temp_init_user');
+        tempCode.set('machineId', 'temp_init_machine');
+        tempCode.set('code', 'TEMP00');
+        tempCode.set('generatedAt', new Date());
+        tempCode.set('expiresAt', new Date());
+        tempCode.set('status', 'temp');
+        
+        await tempCode.save();
+        await tempCode.destroy(); // 立即删除临时数据
+        
+        results.DailyAuthCode = '表已创建，等待验证码生成';
+      } catch (error) {
+        console.error('创建DailyAuthCode表失败:', error);
+        results.DailyAuthCode = '表创建失败: ' + error.message;
+      }
     } else {
       results.DailyAuthCode = `表已存在，共 ${codeCount} 条验证码记录`;
     }
@@ -200,19 +205,24 @@ AV.Cloud.define('initDatabase', async (request) => {
     }
     
     if (adCount === 0) {
-      // 创建一个临时广告观看记录来触发表创建
-      const tempAd = new AdWatchRecord();
-      tempAd.set('userId', 'temp_init_user');
-      tempAd.set('machineId', 'temp_init_machine');
-      tempAd.set('adType', 'temp');
-      tempAd.set('watchProgress', 0);
-      tempAd.set('completedAt', new Date());
-      tempAd.set('status', 'temp');
-      
-      await tempAd.save();
-      await tempAd.destroy(); // 立即删除临时数据
-      
-      results.AdWatchRecord = '表已创建，等待广告观看记录';
+      try {
+        // 创建一个临时广告观看记录来触发表创建
+        const tempAd = new AdWatchRecord();
+        tempAd.set('userId', 'temp_init_user');
+        tempAd.set('machineId', 'temp_init_machine');
+        tempAd.set('adType', 'temp');
+        tempAd.set('watchProgress', 0);
+        tempAd.set('completedAt', new Date());
+        tempAd.set('status', 'temp');
+        
+        await tempAd.save();
+        await tempAd.destroy(); // 立即删除临时数据
+        
+        results.AdWatchRecord = '表已创建，等待广告观看记录';
+      } catch (error) {
+        console.error('创建AdWatchRecord表失败:', error);
+        results.AdWatchRecord = '表创建失败: ' + error.message;
+      }
     } else {
       results.AdWatchRecord = `表已存在，共 ${adCount} 条广告记录`;
     }
@@ -228,17 +238,22 @@ AV.Cloud.define('initDatabase', async (request) => {
     }
     
     if (statsCount === 0) {
-      // 创建一个临时统计记录来触发表创建
-      const tempStats = new UsageStatistics();
-      tempStats.set('userId', 'temp_init_user');
-      tempStats.set('action', 'temp_init');
-      tempStats.set('details', { init: true });
-      tempStats.set('timestamp', new Date());
-      
-      await tempStats.save();
-      await tempStats.destroy(); // 立即删除临时数据
-      
-      results.UsageStatistics = '表已创建，等待使用统计';
+      try {
+        // 创建一个临时统计记录来触发表创建
+        const tempStats = new UsageStatistics();
+        tempStats.set('userId', 'temp_init_user');
+        tempStats.set('action', 'temp_init');
+        tempStats.set('details', { init: true });
+        tempStats.set('timestamp', new Date());
+        
+        await tempStats.save();
+        await tempStats.destroy(); // 立即删除临时数据
+        
+        results.UsageStatistics = '表已创建，等待使用统计';
+      } catch (error) {
+        console.error('创建UsageStatistics表失败:', error);
+        results.UsageStatistics = '表创建失败: ' + error.message;
+      }
     } else {
       results.UsageStatistics = `表已存在，共 ${statsCount} 条统计记录`;
     }
@@ -363,6 +378,12 @@ function generateMachineFingerprint(hardwareInfo) {
  */
 async function recordUsageStatistics(userId, action, details = {}) {
   try {
+    // 添加参数验证
+    if (!userId || !action) {
+      console.warn('使用统计参数不完整:', { userId, action });
+      return;
+    }
+    
     const UsageStatistics = AV.Object.extend('UsageStatistics');
     const stat = new UsageStatistics();
     
@@ -582,11 +603,10 @@ AV.Cloud.define('generateAuthCode', async (request) => {
     
     const existingCode = await query.first();
     if (existingCode) {
-      const data = existingCode.toJSON();
       return {
         success: true,
         data: {
-          code: data.code,
+          code: existingCode.get('code'),
           expiryTime: '23:59:59',
           isNew: false,
           message: '今日验证码已生成',
@@ -991,17 +1011,6 @@ AV.Cloud.define('checkAdPermission', async (request) => {
   }
 });
 
+// 导出给 LeanEngine 使用
 module.exports = AV.Cloud;
-
-// 启动HTTP服务器
-const express = require('express');
-const app = express();
-
-// 使用LeanEngine中间件
-app.use(require('leanengine').express());
-
-const PORT = process.env.LEANCLOUD_APP_PORT || process.env.PORT || 3000;
-app.listen(PORT, function () {
-  console.log('LeanEngine app is running on port:', PORT);
-});
 
