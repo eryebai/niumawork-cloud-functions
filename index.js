@@ -185,6 +185,106 @@ AV.Cloud.define('initDatabase', async (request) => {
 });
 
 /**
+ * 设备注册功能
+ */
+AV.Cloud.define('registerDevice', async (request) => {
+  try {
+    const { hardwareInfo } = request.params;
+    
+    if (!hardwareInfo) {
+      return {
+        success: false,
+        message: '硬件信息不能为空'
+      };
+    }
+    
+    // 生成设备指纹
+    const machineId = generateMachineFingerprint(hardwareInfo);
+    
+    // 检查设备是否已注册
+    const UserDevice = AV.Object.extend('UserDevice');
+    const query = new AV.Query(UserDevice);
+    query.equalTo('machineId', machineId);
+    
+    let device = await query.first();
+    
+    if (device) {
+      // 设备已存在，更新最后活跃时间
+      device.set('lastActiveTime', new Date());
+      device.set('totalUsageDays', (device.get('totalUsageDays') || 0) + 1);
+      await device.save();
+      
+      return {
+        success: true,
+        message: '设备信息已更新',
+        data: {
+          machineId: machineId,
+          isNewDevice: false,
+          lastActiveTime: device.get('lastActiveTime'),
+          totalUsageDays: device.get('totalUsageDays')
+        }
+      };
+    } else {
+      // 新设备，创建注册记录
+      device = new UserDevice();
+      device.set('machineId', machineId);
+      device.set('deviceInfo', hardwareInfo);
+      device.set('firstRegisterTime', new Date());
+      device.set('lastActiveTime', new Date());
+      device.set('totalUsageDays', 1);
+      device.set('status', 'active');
+      
+      await device.save();
+      
+      return {
+        success: true,
+        message: '设备注册成功',
+        data: {
+          machineId: machineId,
+          isNewDevice: true,
+          firstRegisterTime: device.get('firstRegisterTime'),
+          totalUsageDays: 1
+        }
+      };
+    }
+  } catch (error) {
+    console.error('设备注册失败:', error);
+    return {
+      success: false,
+      message: '设备注册失败，请重试',
+      error: error.message
+    };
+  }
+});
+
+/**
+ * 生成设备指纹
+ */
+function generateMachineFingerprint(hardwareInfo) {
+  const { cpu, memory, disk, mac, motherboard, os } = hardwareInfo;
+  
+  // 组合硬件信息生成唯一指纹
+  const fingerprint = [
+    cpu || '',
+    memory || '',
+    disk || '',
+    mac || '',
+    motherboard || '',
+    os || ''
+  ].join('|');
+  
+  // 简单哈希算法生成短ID
+  let hash = 0;
+  for (let i = 0; i < fingerprint.length; i++) {
+    const char = fingerprint.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // 转为32位整数
+  }
+  
+  return 'device_' + Math.abs(hash).toString(36);
+}
+
+/**
  * 搜索软件
  */
 AV.Cloud.define('searchSoftware', async (request) => {
