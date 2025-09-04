@@ -2,13 +2,12 @@
   "name": "niumawork-cloud-functions",
   "version": "1.0.0",
   "description": "牛马Work LeanCloud云函数",
-  "main": "server.js",
+  "main": "index.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node index.js"
   },
   "dependencies": {
-    "leanengine": "^4.0.0",
-    "express": "^4.18.0"
+    "leanengine": "latest"
   },
   "engines": {
     "node": ">=14.0.0"
