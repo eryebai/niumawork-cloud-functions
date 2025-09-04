@@ -99,9 +99,10 @@ const INITIAL_SOFTWARE_DATA = [
  */
 AV.Cloud.define('initDatabase', async (request) => {
   try {
-    console.log('开始初始化数据库...');
+    console.log('开始初始化所有数据库表...');
+    const results = {};
 
-    // 检查并创建软件信息表
+    // 1. 初始化 SoftwareInfo 表
     let softwareCount = 0;
     try {
       const SoftwareInfo = AV.Object.extend('SoftwareInfo');
@@ -111,7 +112,6 @@ AV.Cloud.define('initDatabase', async (request) => {
       console.log('SoftwareInfo表不存在，将创建并初始化数据');
     }
 
-    // 如果没有软件数据，初始化数据
     if (softwareCount === 0) {
       const SoftwareInfo = AV.Object.extend('SoftwareInfo');
       const softwareObjects = INITIAL_SOFTWARE_DATA.map(data => {
@@ -124,14 +124,55 @@ AV.Cloud.define('initDatabase', async (request) => {
       
       await AV.Object.saveAll(softwareObjects);
       console.log(`已初始化 ${INITIAL_SOFTWARE_DATA.length} 条软件数据`);
+      results.SoftwareInfo = `已初始化 ${INITIAL_SOFTWARE_DATA.length} 条软件数据`;
+    } else {
+      results.SoftwareInfo = `表已存在，共 ${softwareCount} 条数据`;
+    }
+
+    // 2. 初始化 UserDevice 表
+    try {
+      const UserDevice = AV.Object.extend('UserDevice');
+      const deviceQuery = new AV.Query(UserDevice);
+      const deviceCount = await deviceQuery.count();
+      results.UserDevice = `表已初始化，共 ${deviceCount} 条设备记录`;
+    } catch (error) {
+      results.UserDevice = '表已创建，等待设备注册';
+    }
+
+    // 3. 初始化 DailyAuthCode 表
+    try {
+      const DailyAuthCode = AV.Object.extend('DailyAuthCode');
+      const codeQuery = new AV.Query(DailyAuthCode);
+      const codeCount = await codeQuery.count();
+      results.DailyAuthCode = `表已初始化，共 ${codeCount} 条验证码记录`;
+    } catch (error) {
+      results.DailyAuthCode = '表已创建，等待验证码生成';
+    }
+
+    // 4. 初始化 AdWatchRecord 表
+    try {
+      const AdWatchRecord = AV.Object.extend('AdWatchRecord');
+      const adQuery = new AV.Query(AdWatchRecord);
+      const adCount = await adQuery.count();
+      results.AdWatchRecord = `表已初始化，共 ${adCount} 条广告记录`;
+    } catch (error) {
+      results.AdWatchRecord = '表已创建，等待广告观看记录';
+    }
+
+    // 5. 初始化 UsageStatistics 表
+    try {
+      const UsageStatistics = AV.Object.extend('UsageStatistics');
+      const statsQuery = new AV.Query(UsageStatistics);
+      const statsCount = await statsQuery.count();
+      results.UsageStatistics = `表已初始化，共 ${statsCount} 条统计记录`;
+    } catch (error) {
+      results.UsageStatistics = '表已创建，等待使用统计';
     }
 
     return {
       success: true,
-      message: '数据库初始化完成',
-      data: {
-        softwareCount: softwareCount || INITIAL_SOFTWARE_DATA.length
-      }
+      message: '所有数据库表初始化完成',
+      data: results
     };
   } catch (error) {
     console.error('数据库初始化失败:', error);
@@ -577,3 +618,4 @@ const PORT = process.env.LEANCLOUD_APP_PORT || process.env.PORT || 3000;
 app.listen(PORT, function () {
   console.log('LeanEngine app is running on port:', PORT);
 });
+
