@@ -1009,6 +1009,19 @@ AV.Cloud.define('checkAdPermission', async (request) => {
   }
 });
 
+// 启动 HTTP 服务器（LeanEngine 必需）
+const express = require('express');
+const app = express();
+
+// 使用 LeanEngine 中间件
+app.use(AV.express());
+
+// 启动服务器
+const PORT = process.env.LEANCLOUD_APP_PORT || process.env.PORT || 3000;
+app.listen(PORT, function () {
+  console.log('LeanEngine app is running on port:', PORT);
+});
+
 // 导出给 LeanEngine 使用
 module.exports = AV.Cloud;
 
