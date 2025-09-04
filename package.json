@@ -8,7 +8,8 @@
   },
   "dependencies": {
     "leanengine": "latest",
-    "leancloud-storage": "latest"
+    "leancloud-storage": "latest",
+    "express": "latest"
   },
   "engines": {
     "node": ">=14.0.0"
