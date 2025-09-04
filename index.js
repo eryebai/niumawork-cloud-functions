@@ -5,8 +5,6 @@
 
 const AV = require('leanengine');
 
-// LeanEngine 会自动初始化，无需手动调用 AV.init()
-
 // 初始化软件数据
 const INITIAL_SOFTWARE_DATA = [
   {
