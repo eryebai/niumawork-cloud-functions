@@ -130,43 +130,117 @@ AV.Cloud.define('initDatabase', async (request) => {
     }
 
     // 2. 初始化 UserDevice 表
+    const UserDevice = AV.Object.extend('UserDevice');
+    let deviceCount = 0;
     try {
-      const UserDevice = AV.Object.extend('UserDevice');
       const deviceQuery = new AV.Query(UserDevice);
-      const deviceCount = await deviceQuery.count();
-      results.UserDevice = `表已初始化，共 ${deviceCount} 条设备记录`;
+      deviceCount = await deviceQuery.count();
     } catch (error) {
-      results.UserDevice = '表已创建，等待设备注册';
+      console.log('UserDevice表不存在，将创建表结构');
+    }
+    
+    if (deviceCount === 0) {
+      // 创建一个临时设备记录来触发表创建
+      const tempDevice = new UserDevice();
+      tempDevice.set('machineId', 'temp_init_device');
+      tempDevice.set('hardwareInfo', {
+        cpu: 'init',
+        disk: 'init', 
+        mac: 'init',
+        motherboard: 'init',
+        os: 'init'
+      });
+      tempDevice.set('status', 'temp');
+      tempDevice.set('registeredAt', new Date());
+      
+      await tempDevice.save();
+      await tempDevice.destroy(); // 立即删除临时数据
+      
+      results.UserDevice = '表已创建，等待真实设备注册';
+    } else {
+      results.UserDevice = `表已存在，共 ${deviceCount} 条设备记录`;
     }
 
     // 3. 初始化 DailyAuthCode 表
+    const DailyAuthCode = AV.Object.extend('DailyAuthCode');
+    let codeCount = 0;
     try {
-      const DailyAuthCode = AV.Object.extend('DailyAuthCode');
       const codeQuery = new AV.Query(DailyAuthCode);
-      const codeCount = await codeQuery.count();
-      results.DailyAuthCode = `表已初始化，共 ${codeCount} 条验证码记录`;
+      codeCount = await codeQuery.count();
     } catch (error) {
+      console.log('DailyAuthCode表不存在，将创建表结构');
+    }
+    
+    if (codeCount === 0) {
+      // 创建一个临时验证码记录来触发表创建
+      const tempCode = new DailyAuthCode();
+      tempCode.set('userId', 'temp_init_user');
+      tempCode.set('machineId', 'temp_init_machine');
+      tempCode.set('code', 'TEMP00');
+      tempCode.set('generatedAt', new Date());
+      tempCode.set('expiresAt', new Date());
+      tempCode.set('status', 'temp');
+      
+      await tempCode.save();
+      await tempCode.destroy(); // 立即删除临时数据
+      
       results.DailyAuthCode = '表已创建，等待验证码生成';
+    } else {
+      results.DailyAuthCode = `表已存在，共 ${codeCount} 条验证码记录`;
     }
 
     // 4. 初始化 AdWatchRecord 表
+    const AdWatchRecord = AV.Object.extend('AdWatchRecord');
+    let adCount = 0;
     try {
-      const AdWatchRecord = AV.Object.extend('AdWatchRecord');
       const adQuery = new AV.Query(AdWatchRecord);
-      const adCount = await adQuery.count();
-      results.AdWatchRecord = `表已初始化，共 ${adCount} 条广告记录`;
+      adCount = await adQuery.count();
     } catch (error) {
+      console.log('AdWatchRecord表不存在，将创建表结构');
+    }
+    
+    if (adCount === 0) {
+      // 创建一个临时广告观看记录来触发表创建
+      const tempAd = new AdWatchRecord();
+      tempAd.set('userId', 'temp_init_user');
+      tempAd.set('machineId', 'temp_init_machine');
+      tempAd.set('adType', 'temp');
+      tempAd.set('watchProgress', 0);
+      tempAd.set('completedAt', new Date());
+      tempAd.set('status', 'temp');
+      
+      await tempAd.save();
+      await tempAd.destroy(); // 立即删除临时数据
+      
       results.AdWatchRecord = '表已创建，等待广告观看记录';
+    } else {
+      results.AdWatchRecord = `表已存在，共 ${adCount} 条广告记录`;
     }
 
     // 5. 初始化 UsageStatistics 表
+    const UsageStatistics = AV.Object.extend('UsageStatistics');
+    let statsCount = 0;
     try {
-      const UsageStatistics = AV.Object.extend('UsageStatistics');
       const statsQuery = new AV.Query(UsageStatistics);
-      const statsCount = await statsQuery.count();
-      results.UsageStatistics = `表已初始化，共 ${statsCount} 条统计记录`;
+      statsCount = await statsQuery.count();
     } catch (error) {
+      console.log('UsageStatistics表不存在，将创建表结构');
+    }
+    
+    if (statsCount === 0) {
+      // 创建一个临时统计记录来触发表创建
+      const tempStats = new UsageStatistics();
+      tempStats.set('userId', 'temp_init_user');
+      tempStats.set('action', 'temp_init');
+      tempStats.set('details', { init: true });
+      tempStats.set('timestamp', new Date());
+      
+      await tempStats.save();
+      await tempStats.destroy(); // 立即删除临时数据
+      
       results.UsageStatistics = '表已创建，等待使用统计';
+    } else {
+      results.UsageStatistics = `表已存在，共 ${statsCount} 条统计记录`;
     }
 
     return {
@@ -282,6 +356,27 @@ function generateMachineFingerprint(hardwareInfo) {
   }
   
   return 'device_' + Math.abs(hash).toString(36);
+}
+
+/**
+ * 记录使用统计
+ */
+async function recordUsageStatistics(userId, action, details = {}) {
+  try {
+    const UsageStatistics = AV.Object.extend('UsageStatistics');
+    const stat = new UsageStatistics();
+    
+    stat.set('userId', userId);
+    stat.set('action', action);
+    stat.set('details', details);
+    stat.set('timestamp', new Date());
+    
+    await stat.save();
+    console.log('使用统计记录成功:', action);
+  } catch (error) {
+    console.error('记录使用统计失败:', error);
+    // 统计失败不影响主流程
+  }
 }
 
 /**
@@ -438,12 +533,36 @@ AV.Cloud.define('getSoftwareDetail', async (request) => {
  */
 AV.Cloud.define('generateAuthCode', async (request) => {
   try {
-    const { userId } = request.params;
+    const { userId, hardwareInfo } = request.params;
     
     if (!userId) {
       return {
         success: false,
         message: '用户ID不能为空'
+      };
+    }
+    
+    if (!hardwareInfo) {
+      return {
+        success: false,
+        message: '硬件信息不能为空'
+      };
+    }
+    
+    // 生成机器指纹
+    const machineId = generateMachineFingerprint(hardwareInfo);
+    
+    // 检查设备是否已注册
+    const UserDevice = AV.Object.extend('UserDevice');
+    const deviceQuery = new AV.Query(UserDevice);
+    deviceQuery.equalTo('machineId', machineId);
+    const device = await deviceQuery.first();
+    
+    if (!device) {
+      return {
+        success: false,
+        message: '设备未注册，请先注册设备',
+        code: 'DEVICE_NOT_REGISTERED'
       };
     }
     
@@ -453,11 +572,13 @@ AV.Cloud.define('generateAuthCode', async (request) => {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     
-    const AuthCode = AV.Object.extend('AuthCode');
-    const query = new AV.Query(AuthCode);
+    const DailyAuthCode = AV.Object.extend('DailyAuthCode');
+    const query = new AV.Query(DailyAuthCode);
     query.equalTo('userId', userId);
-    query.greaterThanOrEqualTo('createdAt', today);
-    query.lessThan('createdAt', tomorrow);
+    query.equalTo('machineId', machineId);
+    query.greaterThanOrEqualTo('generatedAt', today);
+    query.lessThan('generatedAt', tomorrow);
+    query.equalTo('status', 'active');
     
     const existingCode = await query.first();
     if (existingCode) {
@@ -468,22 +589,36 @@ AV.Cloud.define('generateAuthCode', async (request) => {
           code: data.code,
           expiryTime: '23:59:59',
           isNew: false,
-          message: '今日验证码已生成'
+          message: '今日验证码已生成',
+          machineId: machineId
         }
       };
     }
     
-    // 生成新的验证码
-    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+    // 生成新的验证码（6位字母数字组合）
+    const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      code += charset.charAt(Math.floor(Math.random() * charset.length));
+    }
     
     // 保存到数据库
-    const authCode = new AuthCode();
+    const authCode = new DailyAuthCode();
     authCode.set('userId', userId);
+    authCode.set('machineId', machineId);
     authCode.set('code', code);
+    authCode.set('generatedAt', new Date());
+    authCode.set('expiresAt', tomorrow);
     authCode.set('status', 'active');
-    authCode.set('expiryDate', tomorrow);
+    authCode.set('hardwareInfo', hardwareInfo);
     
     await authCode.save();
+    
+    // 记录使用统计
+    await recordUsageStatistics(userId, 'auth_code_generated', {
+      machineId: machineId,
+      codeLength: code.length
+    });
     
     return {
       success: true,
@@ -491,7 +626,8 @@ AV.Cloud.define('generateAuthCode', async (request) => {
         code: code,
         expiryTime: '23:59:59',
         isNew: true,
-        message: '验证码生成成功'
+        message: '验证码生成成功',
+        machineId: machineId
       }
     };
   } catch (error) {
@@ -509,7 +645,7 @@ AV.Cloud.define('generateAuthCode', async (request) => {
  */
 AV.Cloud.define('validateAuthCode', async (request) => {
   try {
-    const { code, userId } = request.params;
+    const { code, userId, hardwareInfo } = request.params;
     
     if (!code) {
       return {
@@ -518,41 +654,76 @@ AV.Cloud.define('validateAuthCode', async (request) => {
       };
     }
     
-    const AuthCode = AV.Object.extend('AuthCode');
-    const query = new AV.Query(AuthCode);
-    query.equalTo('code', code.toUpperCase());
-    query.equalTo('status', 'active');
-    
-    if (userId) {
-      query.equalTo('userId', userId);
+    if (!userId) {
+      return {
+        success: false,
+        message: '用户ID不能为空'
+      };
     }
+    
+    if (!hardwareInfo) {
+      return {
+        success: false,
+        message: '硬件信息不能为空'
+      };
+    }
+    
+    // 生成机器指纹
+    const machineId = generateMachineFingerprint(hardwareInfo);
+    
+    const DailyAuthCode = AV.Object.extend('DailyAuthCode');
+    const query = new AV.Query(DailyAuthCode);
+    query.equalTo('code', code.toUpperCase());
+    query.equalTo('userId', userId);
+    query.equalTo('machineId', machineId);
+    query.equalTo('status', 'active');
     
     const authCode = await query.first();
     
     if (!authCode) {
       return {
         success: false,
-        message: '验证码无效或已过期'
+        message: '验证码无效、已使用或设备不匹配',
+        code: 'INVALID_CODE'
       };
     }
     
     // 检查是否过期
     const now = new Date();
-    const expiryDate = authCode.get('expiryDate');
+    const expiresAt = authCode.get('expiresAt');
     
-    if (now >= expiryDate) {
+    if (now >= expiresAt) {
+      // 将过期的验证码标记为失效
+      authCode.set('status', 'expired');
+      await authCode.save();
+      
       return {
         success: false,
-        message: '验证码已过期'
+        message: '验证码已过期，请重新获取',
+        code: 'CODE_EXPIRED'
       };
     }
+    
+    // 标记验证码为已使用
+    authCode.set('status', 'used');
+    authCode.set('usedAt', new Date());
+    await authCode.save();
+    
+    // 记录使用统计
+    await recordUsageStatistics(userId, 'auth_code_validated', {
+      machineId: machineId,
+      codeUsed: code,
+      validationTime: new Date()
+    });
     
     return {
       success: true,
       message: '验证码验证成功',
       data: {
         code: authCode.get('code'),
-        userId: authCode.get('userId')
+        userId: authCode.get('userId'),
+        machineId: machineId,
+        validUntil: expiresAt
       }
     };
   } catch (error) {
@@ -701,6 +872,121 @@ AV.Cloud.define('getSoftwareList', async (request) => {
       success: false,
       message: '获取列表失败，请重试',
       error: error.message
+    };
+  }
+});
+
+/**
+ * 检查用户广告观看权限
+ */
+AV.Cloud.define('checkAdPermission', async (request) => {
+  try {
+    const { userId, hardwareInfo } = request.params;
+    
+    if (!userId) {
+      return {
+        success: false,
+        message: '用户ID不能为空'
+      };
+    }
+    
+    if (!hardwareInfo) {
+      return {
+        success: false,
+        message: '硬件信息不能为空'
+      };
+    }
+    
+    // 生成机器指纹
+    const machineId = generateMachineFingerprint(hardwareInfo);
+    
+    // 检查设备是否已注册
+    const UserDevice = AV.Object.extend('UserDevice');
+    const deviceQuery = new AV.Query(UserDevice);
+    deviceQuery.equalTo('machineId', machineId);
+    const device = await deviceQuery.first();
+    
+    if (!device) {
+      return {
+        success: false,
+        message: '设备未注册，请先注册设备',
+        code: 'DEVICE_NOT_REGISTERED',
+        hasPermission: false
+      };
+    }
+    
+    // 检查今日是否已生成过验证码
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    const DailyAuthCode = AV.Object.extend('DailyAuthCode');
+    const codeQuery = new AV.Query(DailyAuthCode);
+    codeQuery.equalTo('userId', userId);
+    codeQuery.equalTo('machineId', machineId);
+    codeQuery.greaterThanOrEqualTo('generatedAt', today);
+    codeQuery.lessThan('generatedAt', tomorrow);
+    codeQuery.equalTo('status', 'active');
+    
+    const existingCode = await codeQuery.first();
+    
+    if (existingCode) {
+      return {
+        success: true,
+        message: '今日验证码已存在，无需观看广告',
+        hasPermission: false,
+        reason: 'CODE_ALREADY_EXISTS',
+        data: {
+          code: existingCode.get('code'),
+          machineId: machineId
+        }
+      };
+    }
+    
+    // 检查今日是否已观看过广告
+    const AdWatchRecord = AV.Object.extend('AdWatchRecord');
+    const adQuery = new AV.Query(AdWatchRecord);
+    adQuery.equalTo('userId', userId);
+    adQuery.equalTo('machineId', machineId);
+    adQuery.equalTo('adType', 'authcode');
+    adQuery.greaterThanOrEqualTo('completedAt', today);
+    adQuery.lessThan('completedAt', tomorrow);
+    adQuery.equalTo('status', 'completed');
+    
+    const adRecord = await adQuery.first();
+    
+    if (adRecord) {
+      return {
+        success: true,
+        message: '今日已观看过广告，但验证码可能已使用',
+        hasPermission: false,
+        reason: 'AD_ALREADY_WATCHED',
+        data: {
+          machineId: machineId,
+          lastWatchTime: adRecord.get('completedAt')
+        }
+      };
+    }
+    
+    // 用户可以观看广告获取验证码
+    return {
+      success: true,
+      message: '可以观看广告获取验证码',
+      hasPermission: true,
+      data: {
+        machineId: machineId,
+        deviceId: device.id
+      }
+    };
+    
+  } catch (error) {
+    console.error('检查广告权限失败:', error);
+    return {
+      success: false,
+      message: '检查权限失败，请重试',
+      error: error.message,
+      hasPermission: false
     };
   }
 });
