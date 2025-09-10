@@ -272,41 +272,74 @@ AV.Cloud.define('initDatabase', async (request) => {
 });
 
 /**
- * 设备注册功能
+ * 设备注册功能（支持软件ID隔离）
  */
 AV.Cloud.define('registerDevice', async (request) => {
   try {
-    const { hardwareInfo } = request.params;
-    
+    const { hardwareInfo, softwareId, deviceId } = request.params;
+
     if (!hardwareInfo) {
       return {
         success: false,
         message: '硬件信息不能为空'
       };
     }
-    
-    // 生成设备指纹
-    const machineId = generateMachineFingerprint(hardwareInfo);
-    
+
+    // 如果客户端提供了完整的deviceId，直接使用；否则生成
+    let machineId;
+    if (deviceId && deviceId.startsWith('real_') && softwareId) {
+      // 客户端提供的设备ID，验证格式是否正确
+      const expectedPrefix = `real_${softwareId}_`;
+      if (deviceId.startsWith(expectedPrefix)) {
+        machineId = deviceId;
+      } else {
+        // 格式不正确，重新生成
+        machineId = generateMachineFingerprint(hardwareInfo, softwareId);
+      }
+    } else {
+      // 生成设备指纹（包含软件ID）
+      machineId = generateMachineFingerprint(hardwareInfo, softwareId);
+    }
+
     // 检查设备是否已注册
     const UserDevice = AV.Object.extend('UserDevice');
     const query = new AV.Query(UserDevice);
     query.equalTo('machineId', machineId);
-    
+
     let device = await query.first();
-    
+
+    // 记录硬件信息类型
+    const isRealHardware = hardwareInfo.source === 'desktop_software';
+    const deviceType = isRealHardware ? 'desktop' : 'browser';
+
     if (device) {
-      // 设备已存在，更新最后活跃时间
+      // 设备已存在，更新最后活跃时间和硬件信息
       device.set('lastActiveTime', new Date());
       device.set('totalUsageDays', (device.get('totalUsageDays') || 0) + 1);
+      device.set('deviceType', deviceType);
+
+      // 更新软件ID信息
+      if (softwareId) {
+        device.set('softwareId', softwareId);
+      }
+
+      // 如果是真实硬件信息，更新详细信息
+      if (isRealHardware) {
+        device.set('realHardwareInfo', hardwareInfo);
+        device.set('isRealHardware', true);
+      }
+
       await device.save();
-      
+
       return {
         success: true,
-        message: '设备信息已更新',
+        message: `设备信息已更新 (${deviceType}${softwareId ? `, 软件: ${softwareId}` : ''})`,
         data: {
           machineId: machineId,
+          softwareId: softwareId,
           isNewDevice: false,
+          deviceType: deviceType,
+          isRealHardware: isRealHardware,
           lastActiveTime: device.get('lastActiveTime'),
           totalUsageDays: device.get('totalUsageDays')
         }
@@ -316,19 +349,34 @@ AV.Cloud.define('registerDevice', async (request) => {
       device = new UserDevice();
       device.set('machineId', machineId);
       device.set('deviceInfo', hardwareInfo);
+      device.set('deviceType', deviceType);
+      device.set('isRealHardware', isRealHardware);
       device.set('firstRegisterTime', new Date());
       device.set('lastActiveTime', new Date());
       device.set('totalUsageDays', 1);
       device.set('status', 'active');
-      
+
+      // 保存软件ID信息
+      if (softwareId) {
+        device.set('softwareId', softwareId);
+      }
+
+      // 如果是真实硬件信息，保存详细信息
+      if (isRealHardware) {
+        device.set('realHardwareInfo', hardwareInfo);
+      }
+
       await device.save();
-      
+
       return {
         success: true,
-        message: '设备注册成功',
+        message: `设备注册成功 (${deviceType}${softwareId ? `, 软件: ${softwareId}` : ''})`,
         data: {
           machineId: machineId,
+          softwareId: softwareId,
           isNewDevice: true,
+          deviceType: deviceType,
+          isRealHardware: isRealHardware,
           firstRegisterTime: device.get('firstRegisterTime'),
           totalUsageDays: 1
         }
@@ -345,30 +393,67 @@ AV.Cloud.define('registerDevice', async (request) => {
 });
 
 /**
- * 生成设备指纹
+ * 生成设备指纹（支持软件ID隔离）
  */
-function generateMachineFingerprint(hardwareInfo) {
-  const { cpu, memory, disk, mac, motherboard, os } = hardwareInfo;
-  
-  // 组合硬件信息生成唯一指纹
-  const fingerprint = [
-    cpu || '',
-    memory || '',
-    disk || '',
-    mac || '',
-    motherboard || '',
-    os || ''
-  ].join('|');
-  
-  // 简单哈希算法生成短ID
-  let hash = 0;
-  for (let i = 0; i < fingerprint.length; i++) {
-    const char = fingerprint.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // 转为32位整数
+function generateMachineFingerprint(hardwareInfo, softwareId = null) {
+  // 适配客户端字段名
+  const {
+    cpu_serial, cpu,
+    motherboard_serial, motherboard,
+    mac_address, mac,
+    os_info, os,
+    hostname,
+    memory, disk, source
+  } = hardwareInfo;
+
+  // 根据硬件信息来源使用不同的指纹生成策略
+  let fingerprint = '';
+  let prefix = '';
+
+  if (source === 'desktop_software') {
+    // 真实硬件信息，使用更严格的指纹生成
+    prefix = 'real_';
+
+    // 构建指纹数据（与客户端保持一致）
+    const fingerprintData = [
+      cpu_serial || cpu || '',           // CPU序列号
+      motherboard_serial || motherboard || '',   // 主板序列号
+      mac_address || mac || '',          // MAC地址
+      os_info || os || '',               // 操作系统信息
+      hostname || ''                     // 主机名
+    ];
+
+    // 如果提供了软件ID，加入指纹计算（关键改动）
+    if (softwareId) {
+      fingerprintData.push(softwareId);
+    }
+
+    // 过滤空值，与客户端保持一致
+    fingerprint = fingerprintData.filter(item => item).join('|');
+  } else {
+    // 浏览器指纹，使用原有逻辑
+    prefix = 'browser_';
+    fingerprint = [
+      cpu_serial || cpu || '',
+      memory || '',
+      disk || '',
+      mac_address || mac || '',
+      motherboard_serial || motherboard || '',
+      os_info || os || ''
+    ].join('|');
   }
-  
-  return 'device_' + Math.abs(hash).toString(36);
+
+  // 使用与客户端一致的SHA256哈希算法
+  const crypto = require('crypto');
+  const hash = crypto.createHash('sha256').update(fingerprint).digest('hex');
+
+  // 如果是桌面软件且有软件ID，返回包含软件ID的格式
+  if (source === 'desktop_software' && softwareId) {
+    const hashStr = hash.substring(0, 12); // 取前12位，与客户端一致
+    return `${prefix}${softwareId}_${hashStr}`;
+  }
+
+  return prefix + hash.substring(0, 16); // 浏览器指纹取前16位
 }
 
 /**
@@ -548,35 +633,35 @@ AV.Cloud.define('getSoftwareDetail', async (request) => {
 });
 
 /**
- * 生成验证码
+ * 生成验证码（支持软件ID隔离）
  */
 AV.Cloud.define('generateAuthCode', async (request) => {
   try {
-    const { userId, hardwareInfo } = request.params;
-    
+    const { userId, hardwareInfo, softwareId } = request.params;
+
     if (!userId) {
       return {
         success: false,
         message: '用户ID不能为空'
       };
     }
-    
+
     if (!hardwareInfo) {
       return {
         success: false,
         message: '硬件信息不能为空'
       };
     }
-    
-    // 生成机器指纹
-    const machineId = generateMachineFingerprint(hardwareInfo);
-    
+
+    // 生成机器指纹（包含软件ID）
+    const machineId = generateMachineFingerprint(hardwareInfo, softwareId);
+
     // 检查设备是否已注册
     const UserDevice = AV.Object.extend('UserDevice');
     const deviceQuery = new AV.Query(UserDevice);
     deviceQuery.equalTo('machineId', machineId);
     const device = await deviceQuery.first();
-    
+
     if (!device) {
       return {
         success: false,
@@ -629,6 +714,11 @@ AV.Cloud.define('generateAuthCode', async (request) => {
     authCode.set('expiresAt', tomorrow);
     authCode.set('status', 'active');
     authCode.set('hardwareInfo', hardwareInfo);
+
+    // 保存软件ID信息
+    if (softwareId) {
+      authCode.set('softwareId', softwareId);
+    }
     
     await authCode.save();
     
@@ -659,35 +749,35 @@ AV.Cloud.define('generateAuthCode', async (request) => {
 });
 
 /**
- * 验证验证码
+ * 验证验证码（支持软件ID隔离）
  */
 AV.Cloud.define('validateAuthCode', async (request) => {
   try {
-    const { code, userId, hardwareInfo } = request.params;
-    
+    const { code, userId, hardwareInfo, softwareId } = request.params;
+
     if (!code) {
       return {
         success: false,
         message: '验证码不能为空'
       };
     }
-    
+
     if (!userId) {
       return {
         success: false,
         message: '用户ID不能为空'
       };
     }
-    
+
     if (!hardwareInfo) {
       return {
         success: false,
         message: '硬件信息不能为空'
       };
     }
-    
-    // 生成机器指纹
-    const machineId = generateMachineFingerprint(hardwareInfo);
+
+    // 生成机器指纹（包含软件ID）
+    const machineId = generateMachineFingerprint(hardwareInfo, softwareId);
     
     const DailyAuthCode = AV.Object.extend('DailyAuthCode');
     const query = new AV.Query(DailyAuthCode);
@@ -741,6 +831,7 @@ AV.Cloud.define('validateAuthCode', async (request) => {
         code: authCode.get('code'),
         userId: authCode.get('userId'),
         machineId: machineId,
+        softwareId: softwareId,
         validUntil: expiresAt
       }
     };
@@ -895,28 +986,28 @@ AV.Cloud.define('getSoftwareList', async (request) => {
 });
 
 /**
- * 检查用户广告观看权限
+ * 检查用户广告观看权限（支持软件ID隔离）
  */
 AV.Cloud.define('checkAdPermission', async (request) => {
   try {
-    const { userId, hardwareInfo } = request.params;
-    
+    const { userId, hardwareInfo, softwareId } = request.params;
+
     if (!userId) {
       return {
         success: false,
         message: '用户ID不能为空'
       };
     }
-    
+
     if (!hardwareInfo) {
       return {
         success: false,
         message: '硬件信息不能为空'
       };
     }
-    
-    // 生成机器指纹
-    const machineId = generateMachineFingerprint(hardwareInfo);
+
+    // 生成机器指纹（包含软件ID）
+    const machineId = generateMachineFingerprint(hardwareInfo, softwareId);
     
     // 检查设备是否已注册
     const UserDevice = AV.Object.extend('UserDevice');
