@@ -637,7 +637,7 @@ AV.Cloud.define('getSoftwareDetail', async (request) => {
  */
 AV.Cloud.define('generateAuthCode', async (request) => {
   try {
-    const { userId, hardwareInfo, softwareId } = request.params;
+    const { userId, hardwareInfo, softwareId, machineId } = request.params;
 
     if (!userId) {
       return {
@@ -646,20 +646,23 @@ AV.Cloud.define('generateAuthCode', async (request) => {
       };
     }
 
-    if (!hardwareInfo) {
+    // 优先使用传递的machineId，否则从hardwareInfo生成
+    let finalMachineId;
+    if (machineId) {
+      finalMachineId = machineId;
+    } else if (hardwareInfo) {
+      finalMachineId = generateMachineFingerprint(hardwareInfo, softwareId);
+    } else {
       return {
         success: false,
-        message: '硬件信息不能为空'
+        message: '硬件信息或机器指纹不能为空'
       };
     }
-
-    // 生成机器指纹（包含软件ID）
-    const machineId = generateMachineFingerprint(hardwareInfo, softwareId);
 
     // 检查设备是否已注册
     const UserDevice = AV.Object.extend('UserDevice');
     const deviceQuery = new AV.Query(UserDevice);
-    deviceQuery.equalTo('machineId', machineId);
+    deviceQuery.equalTo('machineId', finalMachineId);
     const device = await deviceQuery.first();
 
     if (!device) {
@@ -679,7 +682,7 @@ AV.Cloud.define('generateAuthCode', async (request) => {
     const DailyAuthCode = AV.Object.extend('DailyAuthCode');
     const query = new AV.Query(DailyAuthCode);
     query.equalTo('userId', userId);
-    query.equalTo('machineId', machineId);
+    query.equalTo('machineId', finalMachineId);
     query.greaterThanOrEqualTo('generatedAt', today);
     query.lessThan('generatedAt', tomorrow);
     query.equalTo('status', 'active');
@@ -693,7 +696,7 @@ AV.Cloud.define('generateAuthCode', async (request) => {
           expiryTime: '23:59:59',
           isNew: false,
           message: '今日验证码已生成',
-          machineId: machineId
+          machineId: finalMachineId
         }
       };
     }
@@ -708,12 +711,12 @@ AV.Cloud.define('generateAuthCode', async (request) => {
     // 保存到数据库
     const authCode = new DailyAuthCode();
     authCode.set('userId', userId);
-    authCode.set('machineId', machineId);
+    authCode.set('machineId', finalMachineId);
     authCode.set('code', code);
     authCode.set('generatedAt', new Date());
     authCode.set('expiresAt', tomorrow);
     authCode.set('status', 'active');
-    authCode.set('hardwareInfo', hardwareInfo);
+    authCode.set('hardwareInfo', hardwareInfo || null);
 
     // 保存软件ID信息
     if (softwareId) {
@@ -724,10 +727,10 @@ AV.Cloud.define('generateAuthCode', async (request) => {
     
     // 记录使用统计
     await recordUsageStatistics(userId, 'auth_code_generated', {
-      machineId: machineId,
+      machineId: finalMachineId,
       codeLength: code.length
     });
-    
+
     return {
       success: true,
       data: {
@@ -735,7 +738,7 @@ AV.Cloud.define('generateAuthCode', async (request) => {
         expiryTime: '23:59:59',
         isNew: true,
         message: '验证码生成成功',
-        machineId: machineId
+        machineId: finalMachineId
       }
     };
   } catch (error) {
@@ -753,7 +756,7 @@ AV.Cloud.define('generateAuthCode', async (request) => {
  */
 AV.Cloud.define('validateAuthCode', async (request) => {
   try {
-    const { code, userId, hardwareInfo, softwareId } = request.params;
+    const { code, userId, hardwareInfo, softwareId, machineId } = request.params;
 
     if (!code) {
       return {
@@ -769,21 +772,24 @@ AV.Cloud.define('validateAuthCode', async (request) => {
       };
     }
 
-    if (!hardwareInfo) {
+    // 优先使用传递的machineId，否则从hardwareInfo生成
+    let finalMachineId;
+    if (machineId) {
+      finalMachineId = machineId;
+    } else if (hardwareInfo) {
+      finalMachineId = generateMachineFingerprint(hardwareInfo, softwareId);
+    } else {
       return {
         success: false,
-        message: '硬件信息不能为空'
+        message: '硬件信息或机器指纹不能为空'
       };
     }
-
-    // 生成机器指纹（包含软件ID）
-    const machineId = generateMachineFingerprint(hardwareInfo, softwareId);
     
     const DailyAuthCode = AV.Object.extend('DailyAuthCode');
     const query = new AV.Query(DailyAuthCode);
     query.equalTo('code', code.toUpperCase());
     query.equalTo('userId', userId);
-    query.equalTo('machineId', machineId);
+    query.equalTo('machineId', finalMachineId);
     query.equalTo('status', 'active');
     
     const authCode = await query.first();
@@ -819,18 +825,18 @@ AV.Cloud.define('validateAuthCode', async (request) => {
     
     // 记录使用统计
     await recordUsageStatistics(userId, 'auth_code_validated', {
-      machineId: machineId,
+      machineId: finalMachineId,
       codeUsed: code,
       validationTime: new Date()
     });
-    
+
     return {
       success: true,
       message: '验证码验证成功',
       data: {
         code: authCode.get('code'),
         userId: authCode.get('userId'),
-        machineId: machineId,
+        machineId: finalMachineId,
         softwareId: softwareId,
         validUntil: expiresAt
       }
