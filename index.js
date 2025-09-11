@@ -276,7 +276,7 @@ AV.Cloud.define('initDatabase', async (request) => {
  */
 AV.Cloud.define('registerDevice', async (request) => {
   try {
-    const { hardwareInfo, softwareId, deviceId } = request.params;
+    const { hardwareInfo, softwareId, deviceId, machineId } = request.params;
 
     if (!hardwareInfo) {
       return {
@@ -285,26 +285,20 @@ AV.Cloud.define('registerDevice', async (request) => {
       };
     }
 
-    // 如果客户端提供了完整的deviceId，直接使用；否则生成
-    let machineId;
-    if (deviceId && deviceId.startsWith('real_') && softwareId) {
-      // 客户端提供的设备ID，验证格式是否正确
-      const expectedPrefix = `real_${softwareId}_`;
-      if (deviceId.startsWith(expectedPrefix)) {
-        machineId = deviceId;
-      } else {
-        // 格式不正确，重新生成
-        machineId = generateMachineFingerprint(hardwareInfo, softwareId);
-      }
-    } else {
-      // 生成设备指纹（包含软件ID）
-      machineId = generateMachineFingerprint(hardwareInfo, softwareId);
+    // 优先使用传递的machineId，否则使用deviceId
+    let finalMachineId = machineId || deviceId;
+
+    if (!finalMachineId) {
+      return {
+        success: false,
+        message: '设备ID或机器指纹不能为空'
+      };
     }
 
     // 检查设备是否已注册
     const UserDevice = AV.Object.extend('UserDevice');
     const query = new AV.Query(UserDevice);
-    query.equalTo('machineId', machineId);
+    query.equalTo('machineId', finalMachineId);
 
     let device = await query.first();
 
@@ -335,7 +329,7 @@ AV.Cloud.define('registerDevice', async (request) => {
         success: true,
         message: `设备信息已更新 (${deviceType}${softwareId ? `, 软件: ${softwareId}` : ''})`,
         data: {
-          machineId: machineId,
+          machineId: finalMachineId,
           softwareId: softwareId,
           isNewDevice: false,
           deviceType: deviceType,
@@ -347,7 +341,7 @@ AV.Cloud.define('registerDevice', async (request) => {
     } else {
       // 新设备，创建注册记录
       device = new UserDevice();
-      device.set('machineId', machineId);
+      device.set('machineId', finalMachineId);
       device.set('deviceInfo', hardwareInfo);
       device.set('deviceType', deviceType);
       device.set('isRealHardware', isRealHardware);
@@ -372,7 +366,7 @@ AV.Cloud.define('registerDevice', async (request) => {
         success: true,
         message: `设备注册成功 (${deviceType}${softwareId ? `, 软件: ${softwareId}` : ''})`,
         data: {
-          machineId: machineId,
+          machineId: finalMachineId,
           softwareId: softwareId,
           isNewDevice: true,
           deviceType: deviceType,
