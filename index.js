@@ -412,6 +412,64 @@ AV.Cloud.define('getServerTime', async (request) => {
   }
 });
 
+/**
+ * 检查设备注册状态
+ */
+AV.Cloud.define('checkDeviceRegistration', async (request) => {
+  try {
+    const { machineId, softwareId } = request.params;
+
+    if (!machineId) {
+      return {
+        success: false,
+        message: '机器指纹不能为空'
+      };
+    }
+
+    // 检查设备是否已注册
+    const UserDevice = AV.Object.extend('UserDevice');
+    const query = new AV.Query(UserDevice);
+    query.equalTo('machineId', machineId);
+
+    const device = await query.first();
+
+    if (device) {
+      // 设备已注册，更新最后检查时间
+      device.set('lastCheckTime', new Date());
+      await device.save();
+
+      return {
+        success: true,
+        message: '设备已注册',
+        data: {
+          machineId: machineId,
+          softwareId: device.get('softwareId'),
+          deviceType: device.get('deviceType'),
+          isRegistered: true,
+          lastActiveTime: device.get('lastActiveTime'),
+          totalUsageDays: device.get('totalUsageDays')
+        }
+      };
+    } else {
+      return {
+        success: false,
+        message: '设备未注册',
+        data: {
+          machineId: machineId,
+          isRegistered: false
+        }
+      };
+    }
+  } catch (error) {
+    console.error('检查设备注册状态失败:', error);
+    return {
+      success: false,
+      message: '检查设备注册状态失败',
+      error: error.message
+    };
+  }
+});
+
 // generateMachineFingerprint函数已删除，现在直接使用客户端传递的machineId
 
 /**
