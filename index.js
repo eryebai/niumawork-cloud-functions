@@ -387,6 +387,32 @@ AV.Cloud.define('registerDevice', async (request) => {
 });
 
 /**
+ * 获取服务器时间
+ */
+AV.Cloud.define('getServerTime', async (request) => {
+  try {
+    const now = new Date();
+
+    return {
+      success: true,
+      data: {
+        serverTime: now.toISOString(),
+        timestamp: now.getTime(),
+        serverDate: now.toDateString(),
+        timezone: 'UTC+8'
+      }
+    };
+  } catch (error) {
+    console.error('获取服务器时间失败:', error);
+    return {
+      success: false,
+      message: '获取服务器时间失败',
+      error: error.message
+    };
+  }
+});
+
+/**
  * 生成设备指纹（支持软件ID隔离）
  */
 function generateMachineFingerprint(hardwareInfo, softwareId = null) {
@@ -784,14 +810,14 @@ AV.Cloud.define('validateAuthCode', async (request) => {
     query.equalTo('code', code.toUpperCase());
     query.equalTo('userId', userId);
     query.equalTo('machineId', finalMachineId);
-    query.equalTo('status', 'active');
-    
+    query.in('status', ['active', 'used']);  // 允许验证active和used状态的验证码
+
     const authCode = await query.first();
-    
+
     if (!authCode) {
       return {
         success: false,
-        message: '验证码无效、已使用或设备不匹配',
+        message: '验证码无效或设备不匹配',
         code: 'INVALID_CODE'
       };
     }
@@ -812,9 +838,29 @@ AV.Cloud.define('validateAuthCode', async (request) => {
       };
     }
     
-    // 标记验证码为已使用
-    authCode.set('status', 'used');
-    authCode.set('usedAt', new Date());
+    // 验证次数限制和状态处理
+    const currentStatus = authCode.get('status');
+    const verifyCount = (authCode.get('verifyCount') || 0) + 1;
+
+    // 防滥用：限制每日验证次数
+    if (verifyCount > 10) {
+      return {
+        success: false,
+        message: '今日验证次数过多，请明天重新获取验证码',
+        code: 'TOO_MANY_ATTEMPTS'
+      };
+    }
+
+    // 更新验证记录
+    authCode.set('verifyCount', verifyCount);
+    authCode.set('lastVerifyAt', new Date());
+
+    // 只有首次验证才标记为used
+    if (currentStatus === 'active') {
+      authCode.set('status', 'used');
+      authCode.set('firstUsedAt', new Date());
+    }
+
     await authCode.save();
     
     // 记录使用统计
