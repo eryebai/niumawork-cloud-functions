@@ -742,7 +742,7 @@ AV.Cloud.define('validateAuthCode', async (request) => {
     query.equalTo('code', code.toUpperCase());
     query.equalTo('userId', userId);
     query.equalTo('machineId', finalMachineId);
-    query.in('status', ['active', 'used']);  // 允许验证active和used状态的验证码
+    query.containedIn('status', ['active', 'used']); // 允许验证active和used状态的验证码
 
     const authCode = await query.first();
 
