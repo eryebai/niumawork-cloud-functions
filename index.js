@@ -737,7 +737,27 @@ AV.Cloud.define('generateAuthCode', async (request) => {
     }
     
     await authCode.save();
-    
+
+    // 添加保存确认：重新查询确保数据真的保存了
+    const confirmQuery = new AV.Query(DailyAuthCode);
+    confirmQuery.equalTo('userId', userId);
+    confirmQuery.equalTo('machineId', finalMachineId);
+    confirmQuery.equalTo('code', code);
+    confirmQuery.equalTo('status', 'active');
+
+    const savedCode = await confirmQuery.first();
+    if (!savedCode) {
+      // 保存失败，返回错误
+      console.error('验证码保存确认失败:', { userId, machineId: finalMachineId, code });
+      return {
+        success: false,
+        message: '验证码保存失败，请重试',
+        code: 'SAVE_FAILED'
+      };
+    }
+
+    console.log('验证码保存确认成功:', { userId, machineId: finalMachineId, code });
+
     // 记录使用统计
     await recordUsageStatistics(userId, 'auth_code_generated', {
       machineId: finalMachineId,
