@@ -1,9 +1,18 @@
 /**
- * 牛马Work - LeanCloud云函数
- * 提供软件搜索、验证码生成、广告完成记录等功能
+ * 牛马Work - LeanCloud云函数（完整版）
+ * 
+ * 包含：
+ * 1. 原有的用户端云函数
+ * 2. 新增的管理员工具云函数（已添加Master Key安全控制）
+ * 
+ * 使用说明：
+ * 将本文件的所有内容复制到LeanCloud云引擎的index.js中
+ * 然后点击"部署"按钮
  */
 
 const AV = require('leanengine');
+
+// ==================== 原有数据 ====================
 
 // 初始化软件数据
 const INITIAL_SOFTWARE_DATA = [
@@ -87,6 +96,8 @@ const INITIAL_SOFTWARE_DATA = [
   }
 ];
 
+// ==================== 原有云函数 ====================
+
 /**
  * 初始化数据库和数据
  */
@@ -134,7 +145,6 @@ AV.Cloud.define('initDatabase', async (request) => {
     
     if (deviceCount === 0) {
       try {
-        // 创建一个临时设备记录来触发表创建
         const tempDevice = new UserDevice();
         tempDevice.set('machineId', 'temp_init_device');
         tempDevice.set('hardwareInfo', {
@@ -148,7 +158,7 @@ AV.Cloud.define('initDatabase', async (request) => {
         tempDevice.set('registeredAt', new Date());
         
         await tempDevice.save();
-        await tempDevice.destroy(); // 立即删除临时数据
+        await tempDevice.destroy();
         
         results.UserDevice = '表已创建，等待真实设备注册';
       } catch (error) {
@@ -171,7 +181,6 @@ AV.Cloud.define('initDatabase', async (request) => {
     
     if (codeCount === 0) {
       try {
-        // 创建一个临时验证码记录来触发表创建
         const tempCode = new DailyAuthCode();
         tempCode.set('userId', 'temp_init_user');
         tempCode.set('machineId', 'temp_init_machine');
@@ -181,7 +190,7 @@ AV.Cloud.define('initDatabase', async (request) => {
         tempCode.set('status', 'temp');
         
         await tempCode.save();
-        await tempCode.destroy(); // 立即删除临时数据
+        await tempCode.destroy();
         
         results.DailyAuthCode = '表已创建，等待验证码生成';
       } catch (error) {
@@ -204,7 +213,6 @@ AV.Cloud.define('initDatabase', async (request) => {
     
     if (adCount === 0) {
       try {
-        // 创建一个临时广告观看记录来触发表创建
         const tempAd = new AdWatchRecord();
         tempAd.set('userId', 'temp_init_user');
         tempAd.set('machineId', 'temp_init_machine');
@@ -214,7 +222,7 @@ AV.Cloud.define('initDatabase', async (request) => {
         tempAd.set('status', 'temp');
         
         await tempAd.save();
-        await tempAd.destroy(); // 立即删除临时数据
+        await tempAd.destroy();
         
         results.AdWatchRecord = '表已创建，等待广告观看记录';
       } catch (error) {
@@ -237,7 +245,6 @@ AV.Cloud.define('initDatabase', async (request) => {
     
     if (statsCount === 0) {
       try {
-        // 创建一个临时统计记录来触发表创建
         const tempStats = new UsageStatistics();
         tempStats.set('userId', 'temp_init_user');
         tempStats.set('action', 'temp_init');
@@ -245,7 +252,7 @@ AV.Cloud.define('initDatabase', async (request) => {
         tempStats.set('timestamp', new Date());
         
         await tempStats.save();
-        await tempStats.destroy(); // 立即删除临时数据
+        await tempStats.destroy();
         
         results.UsageStatistics = '表已创建，等待使用统计';
       } catch (error) {
@@ -285,7 +292,6 @@ AV.Cloud.define('registerDevice', async (request) => {
       };
     }
 
-    // 优先使用传递的machineId，否则使用deviceId
     let finalMachineId = machineId || deviceId;
 
     if (!finalMachineId) {
@@ -295,29 +301,24 @@ AV.Cloud.define('registerDevice', async (request) => {
       };
     }
 
-    // 检查设备是否已注册
     const UserDevice = AV.Object.extend('UserDevice');
     const query = new AV.Query(UserDevice);
     query.equalTo('machineId', finalMachineId);
 
     let device = await query.first();
 
-    // 记录硬件信息类型
     const isRealHardware = hardwareInfo.source === 'desktop_software';
     const deviceType = isRealHardware ? 'desktop' : 'browser';
 
     if (device) {
-      // 设备已存在，更新最后活跃时间和硬件信息
       device.set('lastActiveTime', new Date());
       device.set('totalUsageDays', (device.get('totalUsageDays') || 0) + 1);
       device.set('deviceType', deviceType);
 
-      // 更新软件ID信息
       if (softwareId) {
         device.set('softwareId', softwareId);
       }
 
-      // 如果是真实硬件信息，更新详细信息
       if (isRealHardware) {
         device.set('realHardwareInfo', hardwareInfo);
         device.set('isRealHardware', true);
@@ -339,7 +340,6 @@ AV.Cloud.define('registerDevice', async (request) => {
         }
       };
     } else {
-      // 新设备，创建注册记录
       device = new UserDevice();
       device.set('machineId', finalMachineId);
       device.set('deviceInfo', hardwareInfo);
@@ -350,12 +350,10 @@ AV.Cloud.define('registerDevice', async (request) => {
       device.set('totalUsageDays', 1);
       device.set('status', 'active');
 
-      // 保存软件ID信息
       if (softwareId) {
         device.set('softwareId', softwareId);
       }
 
-      // 如果是真实硬件信息，保存详细信息
       if (isRealHardware) {
         device.set('realHardwareInfo', hardwareInfo);
       }
@@ -426,7 +424,6 @@ AV.Cloud.define('checkDeviceRegistration', async (request) => {
       };
     }
 
-    // 检查设备是否已注册
     const UserDevice = AV.Object.extend('UserDevice');
     const query = new AV.Query(UserDevice);
     query.equalTo('machineId', machineId);
@@ -434,7 +431,6 @@ AV.Cloud.define('checkDeviceRegistration', async (request) => {
     const device = await query.first();
 
     if (device) {
-      // 设备已注册，更新最后检查时间
       device.set('lastCheckTime', new Date());
       await device.save();
 
@@ -470,14 +466,11 @@ AV.Cloud.define('checkDeviceRegistration', async (request) => {
   }
 });
 
-// generateMachineFingerprint函数已删除，现在直接使用客户端传递的machineId
-
 /**
  * 记录使用统计
  */
 async function recordUsageStatistics(userId, action, details = {}) {
   try {
-    // 添加参数验证
     if (!userId || !action) {
       console.warn('使用统计参数不完整:', { userId, action });
       return;
@@ -495,7 +488,6 @@ async function recordUsageStatistics(userId, action, details = {}) {
     console.log('使用统计记录成功:', action);
   } catch (error) {
     console.error('记录使用统计失败:', error);
-    // 统计失败不影响主流程
   }
 }
 
@@ -509,10 +501,8 @@ AV.Cloud.define('searchSoftware', async (request) => {
     const SoftwareInfo = AV.Object.extend('SoftwareInfo');
     let query = new AV.Query(SoftwareInfo);
     
-    // 只返回有效的软件
     query.equalTo('status', 'active');
     
-    // 关键词搜索
     if (keyword) {
       const nameQuery = new AV.Query(SoftwareInfo);
       nameQuery.contains('name', keyword);
@@ -527,12 +517,10 @@ AV.Cloud.define('searchSoftware', async (request) => {
       query.equalTo('status', 'active');
     }
     
-    // 分类筛选
     if (category) {
       query.equalTo('category', category);
     }
     
-    // 分页
     query.skip((page - 1) * limit);
     query.limit(limit);
     query.descending('downloadCount');
@@ -540,7 +528,6 @@ AV.Cloud.define('searchSoftware', async (request) => {
     const results = await query.find();
     const total = await query.count();
     
-    // 转换为JSON格式
     const softwareList = results.map(item => {
       const data = item.toJSON();
       return {
@@ -549,7 +536,7 @@ AV.Cloud.define('searchSoftware', async (request) => {
         category: data.category,
         version: data.version,
         size: data.size,
-        description: data.description.substring(0, 100) + '...', // 简短描述
+        description: data.description.substring(0, 100) + '...',
         rating: data.rating,
         downloadCount: data.downloadCount,
         tags: data.tags || []
@@ -590,14 +577,13 @@ AV.Cloud.define('getSoftwareDetail', async (request) => {
       };
     }
     
-    // 检查用户是否已观看广告
     if (userId) {
       const AdCompletion = AV.Object.extend('AdCompletion');
       const adQuery = new AV.Query(AdCompletion);
       adQuery.equalTo('userId', userId);
       adQuery.equalTo('adType', 'detail');
       adQuery.equalTo('softwareId', softwareId);
-      adQuery.greaterThan('createdAt', new Date(Date.now() - 24 * 60 * 60 * 1000)); // 24小时内
+      adQuery.greaterThan('createdAt', new Date(Date.now() - 24 * 60 * 60 * 1000));
       
       const adCompletion = await adQuery.first();
       if (!adCompletion) {
@@ -609,7 +595,6 @@ AV.Cloud.define('getSoftwareDetail', async (request) => {
       }
     }
     
-    // 获取软件详情
     const SoftwareInfo = AV.Object.extend('SoftwareInfo');
     const query = new AV.Query(SoftwareInfo);
     const software = await query.get(softwareId);
@@ -650,6 +635,7 @@ AV.Cloud.define('getSoftwareDetail', async (request) => {
 
 /**
  * 生成验证码（支持软件ID隔离）
+ * ===== 已添加广告开关检查逻辑 =====
  */
 AV.Cloud.define('generateAuthCode', async (request) => {
   try {
@@ -662,7 +648,6 @@ AV.Cloud.define('generateAuthCode', async (request) => {
       };
     }
 
-    // 必须传递machineId参数
     if (!machineId) {
       return {
         success: false,
@@ -672,7 +657,6 @@ AV.Cloud.define('generateAuthCode', async (request) => {
 
     const finalMachineId = machineId;
 
-    // 检查设备是否已注册
     const UserDevice = AV.Object.extend('UserDevice');
     const deviceQuery = new AV.Query(UserDevice);
     deviceQuery.equalTo('machineId', finalMachineId);
@@ -684,6 +668,22 @@ AV.Cloud.define('generateAuthCode', async (request) => {
         message: '设备未注册，请先注册设备',
         code: 'DEVICE_NOT_REGISTERED'
       };
+    }
+    
+    // ===== 新增：检查广告开关状态 =====
+    let adEnabled = true;
+    try {
+      const adStatusQuery = new AV.Query('SystemConfig');
+      adStatusQuery.equalTo('configKey', 'ad_enabled');
+      const adConfig = await adStatusQuery.first();
+      
+      if (adConfig && adConfig.get('configValue')) {
+        adEnabled = adConfig.get('configValue').enabled !== false;
+      }
+      console.log('广告开关状态:', adEnabled);
+    } catch (error) {
+      console.log('获取广告开关状态失败，默认开启:', error);
+      adEnabled = true;
     }
     
     // 检查今日是否已生成过验证码
@@ -714,6 +714,33 @@ AV.Cloud.define('generateAuthCode', async (request) => {
       };
     }
     
+    // ===== 新增：如果广告开启，检查是否观看过广告 =====
+    if (adEnabled) {
+      const AdWatchRecord = AV.Object.extend('AdWatchRecord');
+      const adQuery = new AV.Query(AdWatchRecord);
+      adQuery.equalTo('userId', userId);
+      adQuery.equalTo('machineId', finalMachineId);
+      adQuery.equalTo('adType', 'authcode');
+      adQuery.greaterThanOrEqualTo('completedAt', today);
+      adQuery.lessThan('completedAt', tomorrow);
+      adQuery.equalTo('status', 'completed');
+      
+      const adRecord = await adQuery.first();
+      
+      if (!adRecord) {
+        return {
+          success: false,
+          message: '请先观看广告后获取验证码',
+          code: 'AD_NOT_WATCHED',
+          requireAd: true
+        };
+      }
+      
+      console.log('用户已观看广告，允许生成验证码');
+    } else {
+      console.log('广告功能已关闭，直接生成验证码');
+    }
+    
     // 生成新的验证码（6位字母数字组合）
     const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let code = '';
@@ -721,7 +748,6 @@ AV.Cloud.define('generateAuthCode', async (request) => {
       code += charset.charAt(Math.floor(Math.random() * charset.length));
     }
     
-    // 保存到数据库
     const authCode = new DailyAuthCode();
     authCode.set('userId', userId);
     authCode.set('machineId', finalMachineId);
@@ -731,14 +757,12 @@ AV.Cloud.define('generateAuthCode', async (request) => {
     authCode.set('status', 'active');
     authCode.set('hardwareInfo', hardwareInfo || null);
 
-    // 保存软件ID信息
     if (softwareId) {
       authCode.set('softwareId', softwareId);
     }
     
     await authCode.save();
 
-    // 添加保存确认：重新查询确保数据真的保存了
     const confirmQuery = new AV.Query(DailyAuthCode);
     confirmQuery.equalTo('userId', userId);
     confirmQuery.equalTo('machineId', finalMachineId);
@@ -747,7 +771,6 @@ AV.Cloud.define('generateAuthCode', async (request) => {
 
     const savedCode = await confirmQuery.first();
     if (!savedCode) {
-      // 保存失败，返回错误
       console.error('验证码保存确认失败:', { userId, machineId: finalMachineId, code });
       return {
         success: false,
@@ -758,7 +781,6 @@ AV.Cloud.define('generateAuthCode', async (request) => {
 
     console.log('验证码保存确认成功:', { userId, machineId: finalMachineId, code });
 
-    // 记录使用统计
     await recordUsageStatistics(userId, 'auth_code_generated', {
       machineId: finalMachineId,
       codeLength: code.length
@@ -805,7 +827,6 @@ AV.Cloud.define('validateAuthCode', async (request) => {
       };
     }
 
-    // 必须传递machineId参数
     if (!machineId) {
       return {
         success: false,
@@ -820,7 +841,7 @@ AV.Cloud.define('validateAuthCode', async (request) => {
     query.equalTo('code', code.toUpperCase());
     query.equalTo('userId', userId);
     query.equalTo('machineId', finalMachineId);
-    query.containedIn('status', ['active', 'used']); // 允许验证active和used状态的验证码
+    query.containedIn('status', ['active', 'used']);
 
     const authCode = await query.first();
 
@@ -832,12 +853,10 @@ AV.Cloud.define('validateAuthCode', async (request) => {
       };
     }
     
-    // 检查是否过期
     const now = new Date();
     const expiresAt = authCode.get('expiresAt');
     
     if (now >= expiresAt) {
-      // 将过期的验证码标记为失效
       authCode.set('status', 'expired');
       await authCode.save();
       
@@ -848,11 +867,9 @@ AV.Cloud.define('validateAuthCode', async (request) => {
       };
     }
     
-    // 验证次数限制和状态处理
     const currentStatus = authCode.get('status');
     const verifyCount = (authCode.get('verifyCount') || 0) + 1;
 
-    // 防滥用：限制每日验证次数
     if (verifyCount > 10) {
       return {
         success: false,
@@ -861,11 +878,9 @@ AV.Cloud.define('validateAuthCode', async (request) => {
       };
     }
 
-    // 更新验证记录
     authCode.set('verifyCount', verifyCount);
     authCode.set('lastVerifyAt', new Date());
 
-    // 只有首次验证才标记为used
     if (currentStatus === 'active') {
       authCode.set('status', 'used');
       authCode.set('firstUsedAt', new Date());
@@ -873,7 +888,6 @@ AV.Cloud.define('validateAuthCode', async (request) => {
 
     await authCode.save();
     
-    // 记录使用统计
     await recordUsageStatistics(userId, 'auth_code_validated', {
       machineId: finalMachineId,
       codeUsed: code,
@@ -915,7 +929,6 @@ AV.Cloud.define('recordAdCompletion', async (request) => {
       };
     }
     
-    // 检查观看进度是否达标
     if (watchProgress < 80) {
       return {
         success: false,
@@ -923,7 +936,6 @@ AV.Cloud.define('recordAdCompletion', async (request) => {
       };
     }
     
-    // 检查是否已记录过（防止重复）
     const AdCompletion = AV.Object.extend('AdCompletion');
     const query = new AV.Query(AdCompletion);
     query.equalTo('userId', userId);
@@ -933,7 +945,7 @@ AV.Cloud.define('recordAdCompletion', async (request) => {
       query.equalTo('softwareId', softwareId);
     }
     
-    query.greaterThan('createdAt', new Date(Date.now() - 60 * 60 * 1000)); // 1小时内
+    query.greaterThan('createdAt', new Date(Date.now() - 60 * 60 * 1000));
     
     const existing = await query.first();
     if (existing) {
@@ -944,7 +956,6 @@ AV.Cloud.define('recordAdCompletion', async (request) => {
       };
     }
     
-    // 记录广告观看完成
     const completion = new AdCompletion();
     completion.set('userId', userId);
     completion.set('adType', adType);
@@ -998,7 +1009,6 @@ AV.Cloud.define('getSoftwareList', async (request) => {
     
     const results = await query.find();
     
-    // 获取所有分类
     const categoryQuery = new AV.Query(SoftwareInfo);
     categoryQuery.equalTo('status', 'active');
     categoryQuery.select('category');
@@ -1062,7 +1072,6 @@ AV.Cloud.define('checkAdPermission', async (request) => {
       };
     }
     
-    // 检查设备是否已注册
     const UserDevice = AV.Object.extend('UserDevice');
     const deviceQuery = new AV.Query(UserDevice);
     deviceQuery.equalTo('machineId', machineId);
@@ -1077,7 +1086,6 @@ AV.Cloud.define('checkAdPermission', async (request) => {
       };
     }
     
-    // 检查今日是否已生成过验证码
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
@@ -1106,7 +1114,6 @@ AV.Cloud.define('checkAdPermission', async (request) => {
       };
     }
     
-    // 检查今日是否已观看过广告
     const AdWatchRecord = AV.Object.extend('AdWatchRecord');
     const adQuery = new AV.Query(AdWatchRecord);
     adQuery.equalTo('userId', userId);
@@ -1131,7 +1138,6 @@ AV.Cloud.define('checkAdPermission', async (request) => {
       };
     }
     
-    // 用户可以观看广告获取验证码
     return {
       success: true,
       message: '可以观看广告获取验证码',
@@ -1153,31 +1159,11 @@ AV.Cloud.define('checkAdPermission', async (request) => {
   }
 });
 
-// 启动 HTTP 服务器（LeanEngine 必需）
-const express = require('express');
-const app = express();
+// 此处省略 Express 服务器代码（保持原样）...
+// 如需完整代码，请查看原 index.js 文件
 
-// 使用 LeanEngine 中间件
-app.use(AV.express());
-
-// 启动服务器
-const PORT = process.env.LEANCLOUD_APP_PORT || process.env.PORT || 3000;
-app.listen(PORT, function () {
-  console.log('LeanEngine app is running on port:', PORT);
-});
-
-// 导出给 LeanEngine 使用
-module.exports = AV.Cloud;
-
-/**
- * 牛马Work - 管理员工具云函数
- * 
- * 使用说明：
- * 将本文件中的所有代码追加到 net网站部署/cloud-functions/index.js 文件末尾
- * 然后重新部署LeanCloud云引擎
- */
-
-// ==================== 管理员认证相关 ====================
+// ==================== 管理员工具云函数（新增）====================
+// ==================== 以下代码使用 Master Key 确保安全 ====================
 
 /**
  * 管理员登录
@@ -1193,10 +1179,8 @@ AV.Cloud.define('adminLogin', async (request) => {
       };
     }
 
-    // 使用LeanCloud内置用户系统登录
     const user = await AV.User.logIn(username, password);
 
-    // 检查是否是管理员
     const role = user.get('role');
     if (role !== 'admin') {
       return {
@@ -1279,10 +1263,8 @@ AV.Cloud.define('changeAdminPassword', async (request) => {
       };
     }
 
-    // 验证旧密码
     await AV.User.logIn(user.get('username'), oldPassword);
 
-    // 修改密码
     user.setPassword(newPassword);
     await user.save();
 
@@ -1298,8 +1280,6 @@ AV.Cloud.define('changeAdminPassword', async (request) => {
   }
 });
 
-// ==================== 系统配置相关 ====================
-
 /**
  * 获取系统配置
  */
@@ -1313,12 +1293,16 @@ AV.Cloud.define('getSystemConfig', async (request) => {
     const config = await query.first();
 
     if (!config) {
-      // 返回默认配置
+      const defaults = {
+        'ad_enabled': { enabled: true },
+        'ad_rotation': { enabled: false },
+        'min_watch_progress': { value: 80 }
+      };
       return {
         success: true,
         data: {
           configKey: configKey,
-          configValue: getDefaultConfig(configKey)
+          configValue: defaults[configKey] || {}
         }
       };
     }
@@ -1340,13 +1324,12 @@ AV.Cloud.define('getSystemConfig', async (request) => {
 });
 
 /**
- * 更新系统配置
+ * 更新系统配置（使用Master Key）
  */
 AV.Cloud.define('updateSystemConfig', async (request) => {
   try {
     const { sessionToken, configKey, configValue, description } = request.params;
 
-    // 验证管理员权限
     const user = await AV.User.become(sessionToken);
     if (user.get('role') !== 'admin') {
       return {
@@ -1361,7 +1344,6 @@ AV.Cloud.define('updateSystemConfig', async (request) => {
     let config = await query.first();
 
     if (!config) {
-      // 创建新配置
       const SystemConfig = AV.Object.extend('SystemConfig');
       config = new SystemConfig();
       config.set('configKey', configKey);
@@ -1372,7 +1354,7 @@ AV.Cloud.define('updateSystemConfig', async (request) => {
       config.set('description', description);
     }
 
-    await config.save();
+    await config.save(null, { useMasterKey: true });
 
     return {
       success: true,
@@ -1386,20 +1368,8 @@ AV.Cloud.define('updateSystemConfig', async (request) => {
   }
 });
 
-// 获取默认配置
-function getDefaultConfig(configKey) {
-  const defaults = {
-    'ad_enabled': { enabled: true },
-    'ad_rotation': { enabled: false },
-    'min_watch_progress': { value: 80 }
-  };
-  return defaults[configKey] || {};
-}
-
-// ==================== 广告管理相关 ====================
-
 /**
- * 获取广告开关状态
+ * 获取广告开关状态（前端调用）
  */
 AV.Cloud.define('getAdStatus', async (request) => {
   try {
@@ -1409,7 +1379,6 @@ AV.Cloud.define('getAdStatus', async (request) => {
     const config = await query.first();
 
     if (!config) {
-      // 默认开启
       return {
         success: true,
         data: {
@@ -1431,13 +1400,12 @@ AV.Cloud.define('getAdStatus', async (request) => {
 });
 
 /**
- * 切换广告开关
+ * 切换广告开关（使用Master Key）
  */
 AV.Cloud.define('toggleAdStatus', async (request) => {
   try {
     const { sessionToken, enabled } = request.params;
 
-    // 验证管理员权限
     const user = await AV.User.become(sessionToken);
     if (user.get('role') !== 'admin') {
       return {
@@ -1459,7 +1427,7 @@ AV.Cloud.define('toggleAdStatus', async (request) => {
     }
 
     config.set('configValue', { enabled: enabled });
-    await config.save();
+    await config.save(null, { useMasterKey: true });
 
     return {
       success: true,
@@ -1475,13 +1443,12 @@ AV.Cloud.define('toggleAdStatus', async (request) => {
 });
 
 /**
- * 添加广告配置
+ * 添加广告配置（使用Master Key）
  */
 AV.Cloud.define('addAdConfig', async (request) => {
   try {
     const { sessionToken, adData } = request.params;
 
-    // 验证管理员权限
     const user = await AV.User.become(sessionToken);
     if (user.get('role') !== 'admin') {
       return {
@@ -1493,7 +1460,6 @@ AV.Cloud.define('addAdConfig', async (request) => {
     const AdConfig = AV.Object.extend('AdConfig');
     const ad = new AdConfig();
 
-    // 生成广告ID
     const adId = 'ad_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
 
     ad.set('adId', adId);
@@ -1509,7 +1475,7 @@ AV.Cloud.define('addAdConfig', async (request) => {
     ad.set('status', adData.status || 'inactive');
     ad.set('viewCount', 0);
 
-    await ad.save();
+    await ad.save(null, { useMasterKey: true });
 
     return {
       success: true,
@@ -1527,13 +1493,12 @@ AV.Cloud.define('addAdConfig', async (request) => {
 });
 
 /**
- * 获取广告列表
+ * 获取广告列表（管理员）
  */
 AV.Cloud.define('getAdList', async (request) => {
   try {
     const { sessionToken, page = 1, limit = 20 } = request.params;
 
-    // 验证管理员权限
     const user = await AV.User.become(sessionToken);
     if (user.get('role') !== 'admin') {
       return {
@@ -1585,13 +1550,12 @@ AV.Cloud.define('getAdList', async (request) => {
 });
 
 /**
- * 更新广告配置
+ * 更新广告配置（使用Master Key）
  */
 AV.Cloud.define('updateAdConfig', async (request) => {
   try {
     const { sessionToken, adId, adData } = request.params;
 
-    // 验证管理员权限
     const user = await AV.User.become(sessionToken);
     if (user.get('role') !== 'admin') {
       return {
@@ -1612,14 +1576,13 @@ AV.Cloud.define('updateAdConfig', async (request) => {
       };
     }
 
-    // 更新字段
     Object.keys(adData).forEach(key => {
       if (adData[key] !== undefined) {
         ad.set(key, adData[key]);
       }
     });
 
-    await ad.save();
+    await ad.save(null, { useMasterKey: true });
 
     return {
       success: true,
@@ -1634,13 +1597,12 @@ AV.Cloud.define('updateAdConfig', async (request) => {
 });
 
 /**
- * 删除广告
+ * 删除广告（使用Master Key）
  */
 AV.Cloud.define('deleteAd', async (request) => {
   try {
     const { sessionToken, adId } = request.params;
 
-    // 验证管理员权限
     const user = await AV.User.become(sessionToken);
     if (user.get('role') !== 'admin') {
       return {
@@ -1661,7 +1623,7 @@ AV.Cloud.define('deleteAd', async (request) => {
       };
     }
 
-    await ad.destroy();
+    await ad.destroy({ useMasterKey: true });
 
     return {
       success: true,
@@ -1690,7 +1652,6 @@ AV.Cloud.define('getActiveAd', async (request) => {
     const results = await query.find();
 
     if (results.length === 0) {
-      // 返回默认广告配置
       return {
         success: true,
         data: {
@@ -1703,7 +1664,6 @@ AV.Cloud.define('getActiveAd', async (request) => {
       };
     }
 
-    // 根据优先级随机选择
     const totalPriority = results.reduce((sum, ad) => sum + ad.get('priority'), 0);
     let random = Math.random() * totalPriority;
 
@@ -1716,9 +1676,8 @@ AV.Cloud.define('getActiveAd', async (request) => {
       }
     }
 
-    // 增加观看次数
     selectedAd.increment('viewCount');
-    await selectedAd.save();
+    await selectedAd.save(null, { useMasterKey: true });
 
     return {
       success: true,
@@ -1736,7 +1695,6 @@ AV.Cloud.define('getActiveAd', async (request) => {
     };
   } catch (error) {
     console.error('获取活跃广告失败:', error);
-    // 返回默认配置
     return {
       success: true,
       data: {
@@ -1750,16 +1708,13 @@ AV.Cloud.define('getActiveAd', async (request) => {
   }
 });
 
-// ==================== 软件管理相关 ====================
-
 /**
- * 添加软件（管理员）
+ * 添加软件（使用Master Key）
  */
 AV.Cloud.define('addSoftware', async (request) => {
   try {
     const { sessionToken, softwareData } = request.params;
 
-    // 验证管理员权限
     const user = await AV.User.become(sessionToken);
     if (user.get('role') !== 'admin') {
       return {
@@ -1771,12 +1726,10 @@ AV.Cloud.define('addSoftware', async (request) => {
     const SoftwareInfo = AV.Object.extend('SoftwareInfo');
     const software = new SoftwareInfo();
 
-    // 设置字段
     Object.keys(softwareData).forEach(key => {
       software.set(key, softwareData[key]);
     });
 
-    // 设置默认值
     if (!softwareData.status) {
       software.set('status', 'active');
     }
@@ -1787,7 +1740,7 @@ AV.Cloud.define('addSoftware', async (request) => {
       software.set('downloadCount', 0);
     }
 
-    await software.save();
+    await software.save(null, { useMasterKey: true });
 
     return {
       success: true,
@@ -1805,13 +1758,12 @@ AV.Cloud.define('addSoftware', async (request) => {
 });
 
 /**
- * 更新软件
+ * 更新软件（使用Master Key）
  */
 AV.Cloud.define('updateSoftware', async (request) => {
   try {
     const { sessionToken, softwareId, softwareData } = request.params;
 
-    // 验证管理员权限
     const user = await AV.User.become(sessionToken);
     if (user.get('role') !== 'admin') {
       return {
@@ -1830,14 +1782,13 @@ AV.Cloud.define('updateSoftware', async (request) => {
       };
     }
 
-    // 更新字段
     Object.keys(softwareData).forEach(key => {
       if (softwareData[key] !== undefined) {
         software.set(key, softwareData[key]);
       }
     });
 
-    await software.save();
+    await software.save(null, { useMasterKey: true });
 
     return {
       success: true,
@@ -1852,13 +1803,12 @@ AV.Cloud.define('updateSoftware', async (request) => {
 });
 
 /**
- * 删除软件
+ * 删除软件（使用Master Key）
  */
 AV.Cloud.define('deleteSoftware', async (request) => {
   try {
     const { sessionToken, softwareId } = request.params;
 
-    // 验证管理员权限
     const user = await AV.User.become(sessionToken);
     if (user.get('role') !== 'admin') {
       return {
@@ -1877,7 +1827,7 @@ AV.Cloud.define('deleteSoftware', async (request) => {
       };
     }
 
-    await software.destroy();
+    await software.destroy({ useMasterKey: true });
 
     return {
       success: true,
@@ -1892,13 +1842,12 @@ AV.Cloud.define('deleteSoftware', async (request) => {
 });
 
 /**
- * 批量删除软件
+ * 批量删除软件（使用Master Key）
  */
 AV.Cloud.define('batchDeleteSoftware', async (request) => {
   try {
     const { sessionToken, softwareIds } = request.params;
 
-    // 验证管理员权限
     const user = await AV.User.become(sessionToken);
     if (user.get('role') !== 'admin') {
       return {
@@ -1919,7 +1868,7 @@ AV.Cloud.define('batchDeleteSoftware', async (request) => {
 
     const results = await query.find();
 
-    await AV.Object.destroyAll(results);
+    await AV.Object.destroyAll(results, { useMasterKey: true });
 
     return {
       success: true,
@@ -1940,7 +1889,6 @@ AV.Cloud.define('getAllSoftware', async (request) => {
   try {
     const { sessionToken, page = 1, limit = 50 } = request.params;
 
-    // 验证管理员权限
     const user = await AV.User.become(sessionToken);
     if (user.get('role') !== 'admin') {
       return {
@@ -1982,16 +1930,13 @@ AV.Cloud.define('getAllSoftware', async (request) => {
   }
 });
 
-// ==================== 搜索信息管理相关 ====================
-
 /**
- * 添加搜索信息
+ * 添加搜索信息（使用Master Key）
  */
 AV.Cloud.define('addSearchInfo', async (request) => {
   try {
     const { sessionToken, searchData } = request.params;
 
-    // 验证管理员权限
     const user = await AV.User.become(sessionToken);
     if (user.get('role') !== 'admin') {
       return {
@@ -2003,7 +1948,6 @@ AV.Cloud.define('addSearchInfo', async (request) => {
     const SearchInfo = AV.Object.extend('SearchInfo');
     const searchInfo = new SearchInfo();
 
-    // 生成搜索信息ID
     const searchId = 'search_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
 
     searchInfo.set('searchId', searchId);
@@ -2017,7 +1961,7 @@ AV.Cloud.define('addSearchInfo', async (request) => {
     searchInfo.set('status', searchData.status || 'active');
     searchInfo.set('viewCount', 0);
 
-    await searchInfo.save();
+    await searchInfo.save(null, { useMasterKey: true });
 
     return {
       success: true,
@@ -2035,13 +1979,12 @@ AV.Cloud.define('addSearchInfo', async (request) => {
 });
 
 /**
- * 更新搜索信息
+ * 更新搜索信息（使用Master Key）
  */
 AV.Cloud.define('updateSearchInfo', async (request) => {
   try {
     const { sessionToken, searchId, searchData } = request.params;
 
-    // 验证管理员权限
     const user = await AV.User.become(sessionToken);
     if (user.get('role') !== 'admin') {
       return {
@@ -2062,14 +2005,13 @@ AV.Cloud.define('updateSearchInfo', async (request) => {
       };
     }
 
-    // 更新字段
     Object.keys(searchData).forEach(key => {
       if (searchData[key] !== undefined) {
         searchInfo.set(key, searchData[key]);
       }
     });
 
-    await searchInfo.save();
+    await searchInfo.save(null, { useMasterKey: true });
 
     return {
       success: true,
@@ -2084,13 +2026,12 @@ AV.Cloud.define('updateSearchInfo', async (request) => {
 });
 
 /**
- * 删除搜索信息
+ * 删除搜索信息（使用Master Key）
  */
 AV.Cloud.define('deleteSearchInfo', async (request) => {
   try {
     const { sessionToken, searchId } = request.params;
 
-    // 验证管理员权限
     const user = await AV.User.become(sessionToken);
     if (user.get('role') !== 'admin') {
       return {
@@ -2111,7 +2052,7 @@ AV.Cloud.define('deleteSearchInfo', async (request) => {
       };
     }
 
-    await searchInfo.destroy();
+    await searchInfo.destroy({ useMasterKey: true });
 
     return {
       success: true,
@@ -2126,13 +2067,12 @@ AV.Cloud.define('deleteSearchInfo', async (request) => {
 });
 
 /**
- * 批量删除搜索信息
+ * 批量删除搜索信息（使用Master Key）
  */
 AV.Cloud.define('batchDeleteSearchInfo', async (request) => {
   try {
     const { sessionToken, searchIds } = request.params;
 
-    // 验证管理员权限
     const user = await AV.User.become(sessionToken);
     if (user.get('role') !== 'admin') {
       return {
@@ -2153,7 +2093,7 @@ AV.Cloud.define('batchDeleteSearchInfo', async (request) => {
 
     const results = await query.find();
 
-    await AV.Object.destroyAll(results);
+    await AV.Object.destroyAll(results, { useMasterKey: true });
 
     return {
       success: true,
@@ -2174,7 +2114,6 @@ AV.Cloud.define('getAllSearchInfo', async (request) => {
   try {
     const { sessionToken, page = 1, limit = 50 } = request.params;
 
-    // 验证管理员权限
     const user = await AV.User.become(sessionToken);
     if (user.get('role') !== 'admin') {
       return {
@@ -2240,10 +2179,8 @@ AV.Cloud.define('searchInfo', async (request) => {
     const SearchInfo = AV.Object.extend('SearchInfo');
     let query = new AV.Query(SearchInfo);
 
-    // 只返回有效的搜索信息
     query.equalTo('status', 'active');
 
-    // 关键词搜索
     const nameQuery = new AV.Query(SearchInfo);
     nameQuery.contains('softwareName', keyword);
 
@@ -2256,12 +2193,10 @@ AV.Cloud.define('searchInfo', async (request) => {
     query = AV.Query.or(nameQuery, funcQuery, detailQuery);
     query.equalTo('status', 'active');
 
-    // 分类筛选
     if (category) {
       query.equalTo('category', category);
     }
 
-    // 分页
     query.skip((page - 1) * limit);
     query.limit(limit);
     query.descending('viewCount');
@@ -2269,7 +2204,6 @@ AV.Cloud.define('searchInfo', async (request) => {
     const results = await query.find();
     const total = await query.count();
 
-    // 转换为JSON格式
     const searchList = results.map(item => ({
       id: item.id,
       searchId: item.get('searchId'),
@@ -2282,11 +2216,10 @@ AV.Cloud.define('searchInfo', async (request) => {
       thumbnail: item.get('thumbnail')
     }));
 
-    // 增加查看次数
     results.forEach(item => {
       item.increment('viewCount');
     });
-    await AV.Object.saveAll(results);
+    await AV.Object.saveAll(results, { useMasterKey: true });
 
     return {
       success: true,
@@ -2307,16 +2240,13 @@ AV.Cloud.define('searchInfo', async (request) => {
   }
 });
 
-// ==================== 文件上传相关 ====================
-
 /**
- * 获取上传Token（用于直接上传到LeanCloud）
+ * 获取上传Token
  */
 AV.Cloud.define('getUploadToken', async (request) => {
   try {
     const { sessionToken, fileName, fileType } = request.params;
 
-    // 验证管理员权限
     const user = await AV.User.become(sessionToken);
     if (user.get('role') !== 'admin') {
       return {
@@ -2325,7 +2255,6 @@ AV.Cloud.define('getUploadToken', async (request) => {
       };
     }
 
-    // LeanCloud会自动处理文件上传权限
     return {
       success: true,
       message: '请使用LeanCloud SDK直接上传文件'
@@ -2338,6 +2267,17 @@ AV.Cloud.define('getUploadToken', async (request) => {
   }
 });
 
-console.log('✅ 管理员工具云函数加载完成');
+// 启动 HTTP 服务器（LeanEngine 必需）
+const express = require('express');
+const app = express();
 
+app.use(AV.express());
+
+const PORT = process.env.LEANCLOUD_APP_PORT || process.env.PORT || 3000;
+app.listen(PORT, function () {
+  console.log('LeanEngine app is running on port:', PORT);
+  console.log('✅ 所有云函数加载完成（包含管理员工具）');
+});
+
+module.exports = AV.Cloud;
 
