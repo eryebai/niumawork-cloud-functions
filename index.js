@@ -1169,3 +1169,1175 @@ app.listen(PORT, function () {
 // 导出给 LeanEngine 使用
 module.exports = AV.Cloud;
 
+/**
+ * 牛马Work - 管理员工具云函数
+ * 
+ * 使用说明：
+ * 将本文件中的所有代码追加到 net网站部署/cloud-functions/index.js 文件末尾
+ * 然后重新部署LeanCloud云引擎
+ */
+
+// ==================== 管理员认证相关 ====================
+
+/**
+ * 管理员登录
+ */
+AV.Cloud.define('adminLogin', async (request) => {
+  try {
+    const { username, password } = request.params;
+
+    if (!username || !password) {
+      return {
+        success: false,
+        message: '用户名和密码不能为空'
+      };
+    }
+
+    // 使用LeanCloud内置用户系统登录
+    const user = await AV.User.logIn(username, password);
+
+    // 检查是否是管理员
+    const role = user.get('role');
+    if (role !== 'admin') {
+      return {
+        success: false,
+        message: '权限不足，仅管理员可登录'
+      };
+    }
+
+    return {
+      success: true,
+      message: '登录成功',
+      data: {
+        userId: user.id,
+        username: user.get('username'),
+        sessionToken: user.getSessionToken(),
+        role: role
+      }
+    };
+  } catch (error) {
+    console.error('管理员登录失败:', error);
+    return {
+      success: false,
+      message: error.message || '登录失败，请检查用户名和密码'
+    };
+  }
+});
+
+/**
+ * 验证管理员令牌
+ */
+AV.Cloud.define('verifyAdminToken', async (request) => {
+  try {
+    const { sessionToken } = request.params;
+
+    if (!sessionToken) {
+      return {
+        success: false,
+        message: 'Session Token不能为空'
+      };
+    }
+
+    const user = await AV.User.become(sessionToken);
+
+    if (user.get('role') !== 'admin') {
+      return {
+        success: false,
+        message: '权限不足'
+      };
+    }
+
+    return {
+      success: true,
+      data: {
+        userId: user.id,
+        username: user.get('username'),
+        role: user.get('role')
+      }
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: 'Token验证失败'
+    };
+  }
+});
+
+/**
+ * 修改管理员密码
+ */
+AV.Cloud.define('changeAdminPassword', async (request) => {
+  try {
+    const { sessionToken, oldPassword, newPassword } = request.params;
+
+    const user = await AV.User.become(sessionToken);
+
+    if (user.get('role') !== 'admin') {
+      return {
+        success: false,
+        message: '权限不足'
+      };
+    }
+
+    // 验证旧密码
+    await AV.User.logIn(user.get('username'), oldPassword);
+
+    // 修改密码
+    user.setPassword(newPassword);
+    await user.save();
+
+    return {
+      success: true,
+      message: '密码修改成功'
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || '密码修改失败'
+    };
+  }
+});
+
+// ==================== 系统配置相关 ====================
+
+/**
+ * 获取系统配置
+ */
+AV.Cloud.define('getSystemConfig', async (request) => {
+  try {
+    const { configKey } = request.params;
+
+    const query = new AV.Query('SystemConfig');
+    query.equalTo('configKey', configKey);
+
+    const config = await query.first();
+
+    if (!config) {
+      // 返回默认配置
+      return {
+        success: true,
+        data: {
+          configKey: configKey,
+          configValue: getDefaultConfig(configKey)
+        }
+      };
+    }
+
+    return {
+      success: true,
+      data: {
+        configKey: config.get('configKey'),
+        configValue: config.get('configValue'),
+        description: config.get('description')
+      }
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || '获取配置失败'
+    };
+  }
+});
+
+/**
+ * 更新系统配置
+ */
+AV.Cloud.define('updateSystemConfig', async (request) => {
+  try {
+    const { sessionToken, configKey, configValue, description } = request.params;
+
+    // 验证管理员权限
+    const user = await AV.User.become(sessionToken);
+    if (user.get('role') !== 'admin') {
+      return {
+        success: false,
+        message: '权限不足'
+      };
+    }
+
+    const query = new AV.Query('SystemConfig');
+    query.equalTo('configKey', configKey);
+
+    let config = await query.first();
+
+    if (!config) {
+      // 创建新配置
+      const SystemConfig = AV.Object.extend('SystemConfig');
+      config = new SystemConfig();
+      config.set('configKey', configKey);
+    }
+
+    config.set('configValue', configValue);
+    if (description) {
+      config.set('description', description);
+    }
+
+    await config.save();
+
+    return {
+      success: true,
+      message: '配置更新成功'
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || '配置更新失败'
+    };
+  }
+});
+
+// 获取默认配置
+function getDefaultConfig(configKey) {
+  const defaults = {
+    'ad_enabled': { enabled: true },
+    'ad_rotation': { enabled: false },
+    'min_watch_progress': { value: 80 }
+  };
+  return defaults[configKey] || {};
+}
+
+// ==================== 广告管理相关 ====================
+
+/**
+ * 获取广告开关状态
+ */
+AV.Cloud.define('getAdStatus', async (request) => {
+  try {
+    const query = new AV.Query('SystemConfig');
+    query.equalTo('configKey', 'ad_enabled');
+
+    const config = await query.first();
+
+    if (!config) {
+      // 默认开启
+      return {
+        success: true,
+        data: {
+          enabled: true
+        }
+      };
+    }
+
+    return {
+      success: true,
+      data: config.get('configValue')
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || '获取广告状态失败'
+    };
+  }
+});
+
+/**
+ * 切换广告开关
+ */
+AV.Cloud.define('toggleAdStatus', async (request) => {
+  try {
+    const { sessionToken, enabled } = request.params;
+
+    // 验证管理员权限
+    const user = await AV.User.become(sessionToken);
+    if (user.get('role') !== 'admin') {
+      return {
+        success: false,
+        message: '权限不足'
+      };
+    }
+
+    const query = new AV.Query('SystemConfig');
+    query.equalTo('configKey', 'ad_enabled');
+
+    let config = await query.first();
+
+    if (!config) {
+      const SystemConfig = AV.Object.extend('SystemConfig');
+      config = new SystemConfig();
+      config.set('configKey', 'ad_enabled');
+      config.set('description', '广告功能总开关');
+    }
+
+    config.set('configValue', { enabled: enabled });
+    await config.save();
+
+    return {
+      success: true,
+      message: enabled ? '广告已开启' : '广告已关闭',
+      data: { enabled }
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || '操作失败'
+    };
+  }
+});
+
+/**
+ * 添加广告配置
+ */
+AV.Cloud.define('addAdConfig', async (request) => {
+  try {
+    const { sessionToken, adData } = request.params;
+
+    // 验证管理员权限
+    const user = await AV.User.become(sessionToken);
+    if (user.get('role') !== 'admin') {
+      return {
+        success: false,
+        message: '权限不足'
+      };
+    }
+
+    const AdConfig = AV.Object.extend('AdConfig');
+    const ad = new AdConfig();
+
+    // 生成广告ID
+    const adId = 'ad_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+
+    ad.set('adId', adId);
+    ad.set('adName', adData.adName);
+    ad.set('adType', adData.adType);
+    ad.set('videoUrl', adData.videoUrl || '');
+    ad.set('linkUrl', adData.linkUrl || '');
+    ad.set('duration', adData.duration || 0);
+    ad.set('minWatchProgress', adData.minWatchProgress || 80);
+    ad.set('minWatchDuration', adData.minWatchDuration || 0);
+    ad.set('adPosition', adData.adPosition || 'authcode');
+    ad.set('priority', adData.priority || 50);
+    ad.set('status', adData.status || 'inactive');
+    ad.set('viewCount', 0);
+
+    await ad.save();
+
+    return {
+      success: true,
+      message: '广告添加成功',
+      data: {
+        adId: adId
+      }
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || '广告添加失败'
+    };
+  }
+});
+
+/**
+ * 获取广告列表
+ */
+AV.Cloud.define('getAdList', async (request) => {
+  try {
+    const { sessionToken, page = 1, limit = 20 } = request.params;
+
+    // 验证管理员权限
+    const user = await AV.User.become(sessionToken);
+    if (user.get('role') !== 'admin') {
+      return {
+        success: false,
+        message: '权限不足'
+      };
+    }
+
+    const query = new AV.Query('AdConfig');
+    query.skip((page - 1) * limit);
+    query.limit(limit);
+    query.descending('createdAt');
+
+    const results = await query.find();
+    const total = await query.count();
+
+    const adList = results.map(ad => ({
+      id: ad.id,
+      adId: ad.get('adId'),
+      adName: ad.get('adName'),
+      adType: ad.get('adType'),
+      videoUrl: ad.get('videoUrl'),
+      linkUrl: ad.get('linkUrl'),
+      duration: ad.get('duration'),
+      minWatchProgress: ad.get('minWatchProgress'),
+      minWatchDuration: ad.get('minWatchDuration'),
+      adPosition: ad.get('adPosition'),
+      priority: ad.get('priority'),
+      status: ad.get('status'),
+      viewCount: ad.get('viewCount'),
+      createdAt: ad.get('createdAt')
+    }));
+
+    return {
+      success: true,
+      data: {
+        list: adList,
+        total,
+        page,
+        limit
+      }
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || '获取广告列表失败'
+    };
+  }
+});
+
+/**
+ * 更新广告配置
+ */
+AV.Cloud.define('updateAdConfig', async (request) => {
+  try {
+    const { sessionToken, adId, adData } = request.params;
+
+    // 验证管理员权限
+    const user = await AV.User.become(sessionToken);
+    if (user.get('role') !== 'admin') {
+      return {
+        success: false,
+        message: '权限不足'
+      };
+    }
+
+    const query = new AV.Query('AdConfig');
+    query.equalTo('adId', adId);
+
+    const ad = await query.first();
+
+    if (!ad) {
+      return {
+        success: false,
+        message: '广告不存在'
+      };
+    }
+
+    // 更新字段
+    Object.keys(adData).forEach(key => {
+      if (adData[key] !== undefined) {
+        ad.set(key, adData[key]);
+      }
+    });
+
+    await ad.save();
+
+    return {
+      success: true,
+      message: '广告更新成功'
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || '广告更新失败'
+    };
+  }
+});
+
+/**
+ * 删除广告
+ */
+AV.Cloud.define('deleteAd', async (request) => {
+  try {
+    const { sessionToken, adId } = request.params;
+
+    // 验证管理员权限
+    const user = await AV.User.become(sessionToken);
+    if (user.get('role') !== 'admin') {
+      return {
+        success: false,
+        message: '权限不足'
+      };
+    }
+
+    const query = new AV.Query('AdConfig');
+    query.equalTo('adId', adId);
+
+    const ad = await query.first();
+
+    if (!ad) {
+      return {
+        success: false,
+        message: '广告不存在'
+      };
+    }
+
+    await ad.destroy();
+
+    return {
+      success: true,
+      message: '广告删除成功'
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || '广告删除失败'
+    };
+  }
+});
+
+/**
+ * 获取当前活跃广告（前端调用）
+ */
+AV.Cloud.define('getActiveAd', async (request) => {
+  try {
+    const { adPosition = 'authcode' } = request.params;
+
+    const query = new AV.Query('AdConfig');
+    query.equalTo('status', 'active');
+    query.equalTo('adPosition', adPosition);
+    query.descending('priority');
+
+    const results = await query.find();
+
+    if (results.length === 0) {
+      // 返回默认广告配置
+      return {
+        success: true,
+        data: {
+          videoUrl: './videos/1.mp4',
+          duration: 30,
+          minWatchProgress: 80,
+          minWatchDuration: 24,
+          isDefault: true
+        }
+      };
+    }
+
+    // 根据优先级随机选择
+    const totalPriority = results.reduce((sum, ad) => sum + ad.get('priority'), 0);
+    let random = Math.random() * totalPriority;
+
+    let selectedAd = results[0];
+    for (const ad of results) {
+      random -= ad.get('priority');
+      if (random <= 0) {
+        selectedAd = ad;
+        break;
+      }
+    }
+
+    // 增加观看次数
+    selectedAd.increment('viewCount');
+    await selectedAd.save();
+
+    return {
+      success: true,
+      data: {
+        adId: selectedAd.get('adId'),
+        adName: selectedAd.get('adName'),
+        adType: selectedAd.get('adType'),
+        videoUrl: selectedAd.get('videoUrl'),
+        linkUrl: selectedAd.get('linkUrl'),
+        duration: selectedAd.get('duration'),
+        minWatchProgress: selectedAd.get('minWatchProgress'),
+        minWatchDuration: selectedAd.get('minWatchDuration'),
+        isDefault: false
+      }
+    };
+  } catch (error) {
+    console.error('获取活跃广告失败:', error);
+    // 返回默认配置
+    return {
+      success: true,
+      data: {
+        videoUrl: './videos/1.mp4',
+        duration: 30,
+        minWatchProgress: 80,
+        minWatchDuration: 24,
+        isDefault: true
+      }
+    };
+  }
+});
+
+// ==================== 软件管理相关 ====================
+
+/**
+ * 添加软件（管理员）
+ */
+AV.Cloud.define('addSoftware', async (request) => {
+  try {
+    const { sessionToken, softwareData } = request.params;
+
+    // 验证管理员权限
+    const user = await AV.User.become(sessionToken);
+    if (user.get('role') !== 'admin') {
+      return {
+        success: false,
+        message: '权限不足'
+      };
+    }
+
+    const SoftwareInfo = AV.Object.extend('SoftwareInfo');
+    const software = new SoftwareInfo();
+
+    // 设置字段
+    Object.keys(softwareData).forEach(key => {
+      software.set(key, softwareData[key]);
+    });
+
+    // 设置默认值
+    if (!softwareData.status) {
+      software.set('status', 'active');
+    }
+    if (!softwareData.rating) {
+      software.set('rating', 0);
+    }
+    if (!softwareData.downloadCount) {
+      software.set('downloadCount', 0);
+    }
+
+    await software.save();
+
+    return {
+      success: true,
+      message: '软件添加成功',
+      data: {
+        id: software.id
+      }
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || '软件添加失败'
+    };
+  }
+});
+
+/**
+ * 更新软件
+ */
+AV.Cloud.define('updateSoftware', async (request) => {
+  try {
+    const { sessionToken, softwareId, softwareData } = request.params;
+
+    // 验证管理员权限
+    const user = await AV.User.become(sessionToken);
+    if (user.get('role') !== 'admin') {
+      return {
+        success: false,
+        message: '权限不足'
+      };
+    }
+
+    const query = new AV.Query('SoftwareInfo');
+    const software = await query.get(softwareId);
+
+    if (!software) {
+      return {
+        success: false,
+        message: '软件不存在'
+      };
+    }
+
+    // 更新字段
+    Object.keys(softwareData).forEach(key => {
+      if (softwareData[key] !== undefined) {
+        software.set(key, softwareData[key]);
+      }
+    });
+
+    await software.save();
+
+    return {
+      success: true,
+      message: '软件更新成功'
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || '软件更新失败'
+    };
+  }
+});
+
+/**
+ * 删除软件
+ */
+AV.Cloud.define('deleteSoftware', async (request) => {
+  try {
+    const { sessionToken, softwareId } = request.params;
+
+    // 验证管理员权限
+    const user = await AV.User.become(sessionToken);
+    if (user.get('role') !== 'admin') {
+      return {
+        success: false,
+        message: '权限不足'
+      };
+    }
+
+    const query = new AV.Query('SoftwareInfo');
+    const software = await query.get(softwareId);
+
+    if (!software) {
+      return {
+        success: false,
+        message: '软件不存在'
+      };
+    }
+
+    await software.destroy();
+
+    return {
+      success: true,
+      message: '软件删除成功'
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || '软件删除失败'
+    };
+  }
+});
+
+/**
+ * 批量删除软件
+ */
+AV.Cloud.define('batchDeleteSoftware', async (request) => {
+  try {
+    const { sessionToken, softwareIds } = request.params;
+
+    // 验证管理员权限
+    const user = await AV.User.become(sessionToken);
+    if (user.get('role') !== 'admin') {
+      return {
+        success: false,
+        message: '权限不足'
+      };
+    }
+
+    if (!Array.isArray(softwareIds) || softwareIds.length === 0) {
+      return {
+        success: false,
+        message: '请选择要删除的软件'
+      };
+    }
+
+    const query = new AV.Query('SoftwareInfo');
+    query.containedIn('objectId', softwareIds);
+
+    const results = await query.find();
+
+    await AV.Object.destroyAll(results);
+
+    return {
+      success: true,
+      message: `成功删除 ${results.length} 个软件`
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || '批量删除失败'
+    };
+  }
+});
+
+/**
+ * 获取所有软件（管理员）
+ */
+AV.Cloud.define('getAllSoftware', async (request) => {
+  try {
+    const { sessionToken, page = 1, limit = 50 } = request.params;
+
+    // 验证管理员权限
+    const user = await AV.User.become(sessionToken);
+    if (user.get('role') !== 'admin') {
+      return {
+        success: false,
+        message: '权限不足'
+      };
+    }
+
+    const query = new AV.Query('SoftwareInfo');
+    query.skip((page - 1) * limit);
+    query.limit(limit);
+    query.descending('createdAt');
+
+    const results = await query.find();
+    const total = await query.count();
+
+    const softwareList = results.map(item => {
+      const data = item.toJSON();
+      return {
+        id: data.objectId,
+        ...data
+      };
+    });
+
+    return {
+      success: true,
+      data: {
+        list: softwareList,
+        total,
+        page,
+        limit
+      }
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || '获取软件列表失败'
+    };
+  }
+});
+
+// ==================== 搜索信息管理相关 ====================
+
+/**
+ * 添加搜索信息
+ */
+AV.Cloud.define('addSearchInfo', async (request) => {
+  try {
+    const { sessionToken, searchData } = request.params;
+
+    // 验证管理员权限
+    const user = await AV.User.become(sessionToken);
+    if (user.get('role') !== 'admin') {
+      return {
+        success: false,
+        message: '权限不足'
+      };
+    }
+
+    const SearchInfo = AV.Object.extend('SearchInfo');
+    const searchInfo = new SearchInfo();
+
+    // 生成搜索信息ID
+    const searchId = 'search_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+
+    searchInfo.set('searchId', searchId);
+    searchInfo.set('softwareName', searchData.softwareName);
+    searchInfo.set('functionality', searchData.functionality || '');
+    searchInfo.set('detailInfo', searchData.detailInfo || '');
+    searchInfo.set('category', searchData.category || '其他');
+    searchInfo.set('tags', searchData.tags || []);
+    searchInfo.set('officialWebsite', searchData.officialWebsite || '');
+    searchInfo.set('thumbnail', searchData.thumbnail || '');
+    searchInfo.set('status', searchData.status || 'active');
+    searchInfo.set('viewCount', 0);
+
+    await searchInfo.save();
+
+    return {
+      success: true,
+      message: '搜索信息添加成功',
+      data: {
+        searchId: searchId
+      }
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || '搜索信息添加失败'
+    };
+  }
+});
+
+/**
+ * 更新搜索信息
+ */
+AV.Cloud.define('updateSearchInfo', async (request) => {
+  try {
+    const { sessionToken, searchId, searchData } = request.params;
+
+    // 验证管理员权限
+    const user = await AV.User.become(sessionToken);
+    if (user.get('role') !== 'admin') {
+      return {
+        success: false,
+        message: '权限不足'
+      };
+    }
+
+    const query = new AV.Query('SearchInfo');
+    query.equalTo('searchId', searchId);
+
+    const searchInfo = await query.first();
+
+    if (!searchInfo) {
+      return {
+        success: false,
+        message: '搜索信息不存在'
+      };
+    }
+
+    // 更新字段
+    Object.keys(searchData).forEach(key => {
+      if (searchData[key] !== undefined) {
+        searchInfo.set(key, searchData[key]);
+      }
+    });
+
+    await searchInfo.save();
+
+    return {
+      success: true,
+      message: '搜索信息更新成功'
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || '搜索信息更新失败'
+    };
+  }
+});
+
+/**
+ * 删除搜索信息
+ */
+AV.Cloud.define('deleteSearchInfo', async (request) => {
+  try {
+    const { sessionToken, searchId } = request.params;
+
+    // 验证管理员权限
+    const user = await AV.User.become(sessionToken);
+    if (user.get('role') !== 'admin') {
+      return {
+        success: false,
+        message: '权限不足'
+      };
+    }
+
+    const query = new AV.Query('SearchInfo');
+    query.equalTo('searchId', searchId);
+
+    const searchInfo = await query.first();
+
+    if (!searchInfo) {
+      return {
+        success: false,
+        message: '搜索信息不存在'
+      };
+    }
+
+    await searchInfo.destroy();
+
+    return {
+      success: true,
+      message: '搜索信息删除成功'
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || '搜索信息删除失败'
+    };
+  }
+});
+
+/**
+ * 批量删除搜索信息
+ */
+AV.Cloud.define('batchDeleteSearchInfo', async (request) => {
+  try {
+    const { sessionToken, searchIds } = request.params;
+
+    // 验证管理员权限
+    const user = await AV.User.become(sessionToken);
+    if (user.get('role') !== 'admin') {
+      return {
+        success: false,
+        message: '权限不足'
+      };
+    }
+
+    if (!Array.isArray(searchIds) || searchIds.length === 0) {
+      return {
+        success: false,
+        message: '请选择要删除的搜索信息'
+      };
+    }
+
+    const query = new AV.Query('SearchInfo');
+    query.containedIn('searchId', searchIds);
+
+    const results = await query.find();
+
+    await AV.Object.destroyAll(results);
+
+    return {
+      success: true,
+      message: `成功删除 ${results.length} 条搜索信息`
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || '批量删除失败'
+    };
+  }
+});
+
+/**
+ * 获取所有搜索信息（管理员）
+ */
+AV.Cloud.define('getAllSearchInfo', async (request) => {
+  try {
+    const { sessionToken, page = 1, limit = 50 } = request.params;
+
+    // 验证管理员权限
+    const user = await AV.User.become(sessionToken);
+    if (user.get('role') !== 'admin') {
+      return {
+        success: false,
+        message: '权限不足'
+      };
+    }
+
+    const query = new AV.Query('SearchInfo');
+    query.skip((page - 1) * limit);
+    query.limit(limit);
+    query.descending('createdAt');
+
+    const results = await query.find();
+    const total = await query.count();
+
+    const searchList = results.map(item => ({
+      id: item.id,
+      searchId: item.get('searchId'),
+      softwareName: item.get('softwareName'),
+      functionality: item.get('functionality'),
+      detailInfo: item.get('detailInfo'),
+      category: item.get('category'),
+      tags: item.get('tags'),
+      officialWebsite: item.get('officialWebsite'),
+      thumbnail: item.get('thumbnail'),
+      status: item.get('status'),
+      viewCount: item.get('viewCount'),
+      createdAt: item.get('createdAt')
+    }));
+
+    return {
+      success: true,
+      data: {
+        list: searchList,
+        total,
+        page,
+        limit
+      }
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || '获取搜索信息列表失败'
+    };
+  }
+});
+
+/**
+ * 搜索功能（前端调用）
+ */
+AV.Cloud.define('searchInfo', async (request) => {
+  try {
+    const { keyword, category, page = 1, limit = 20 } = request.params;
+
+    if (!keyword || keyword.trim() === '') {
+      return {
+        success: false,
+        message: '请输入搜索关键词'
+      };
+    }
+
+    const SearchInfo = AV.Object.extend('SearchInfo');
+    let query = new AV.Query(SearchInfo);
+
+    // 只返回有效的搜索信息
+    query.equalTo('status', 'active');
+
+    // 关键词搜索
+    const nameQuery = new AV.Query(SearchInfo);
+    nameQuery.contains('softwareName', keyword);
+
+    const funcQuery = new AV.Query(SearchInfo);
+    funcQuery.contains('functionality', keyword);
+
+    const detailQuery = new AV.Query(SearchInfo);
+    detailQuery.contains('detailInfo', keyword);
+
+    query = AV.Query.or(nameQuery, funcQuery, detailQuery);
+    query.equalTo('status', 'active');
+
+    // 分类筛选
+    if (category) {
+      query.equalTo('category', category);
+    }
+
+    // 分页
+    query.skip((page - 1) * limit);
+    query.limit(limit);
+    query.descending('viewCount');
+
+    const results = await query.find();
+    const total = await query.count();
+
+    // 转换为JSON格式
+    const searchList = results.map(item => ({
+      id: item.id,
+      searchId: item.get('searchId'),
+      softwareName: item.get('softwareName'),
+      functionality: item.get('functionality'),
+      detailInfo: item.get('detailInfo'),
+      category: item.get('category'),
+      tags: item.get('tags') || [],
+      officialWebsite: item.get('officialWebsite'),
+      thumbnail: item.get('thumbnail')
+    }));
+
+    // 增加查看次数
+    results.forEach(item => {
+      item.increment('viewCount');
+    });
+    await AV.Object.saveAll(results);
+
+    return {
+      success: true,
+      data: {
+        results: searchList,
+        total,
+        page,
+        limit,
+        hasMore: page * limit < total
+      }
+    };
+  } catch (error) {
+    console.error('搜索失败:', error);
+    return {
+      success: false,
+      message: error.message || '搜索失败，请重试'
+    };
+  }
+});
+
+// ==================== 文件上传相关 ====================
+
+/**
+ * 获取上传Token（用于直接上传到LeanCloud）
+ */
+AV.Cloud.define('getUploadToken', async (request) => {
+  try {
+    const { sessionToken, fileName, fileType } = request.params;
+
+    // 验证管理员权限
+    const user = await AV.User.become(sessionToken);
+    if (user.get('role') !== 'admin') {
+      return {
+        success: false,
+        message: '权限不足'
+      };
+    }
+
+    // LeanCloud会自动处理文件上传权限
+    return {
+      success: true,
+      message: '请使用LeanCloud SDK直接上传文件'
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || '获取上传权限失败'
+    };
+  }
+});
+
+console.log('✅ 管理员工具云函数加载完成');
+
+
