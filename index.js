@@ -698,7 +698,7 @@ AV.Cloud.define('generateAuthCode', async (request) => {
     query.equalTo('machineId', finalMachineId);
     query.greaterThanOrEqualTo('generatedAt', today);
     query.lessThan('generatedAt', tomorrow);
-    query.equalTo('status', 'active');
+    query.containedIn('status', ['active', 'used']);
     
     const existingCode = await query.first();
     if (existingCode) {
@@ -1097,7 +1097,7 @@ AV.Cloud.define('checkAdPermission', async (request) => {
     codeQuery.equalTo('machineId', machineId);
     codeQuery.greaterThanOrEqualTo('generatedAt', today);
     codeQuery.lessThan('generatedAt', tomorrow);
-    codeQuery.equalTo('status', 'active');
+    codeQuery.containedIn('status', ['active', 'used']);
     
     const existingCode = await codeQuery.first();
     
